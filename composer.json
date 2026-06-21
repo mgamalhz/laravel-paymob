@@ -1,0 +1,36 @@
+{
+    "name": "paymob/laravel",
+    "description": "Laravel integration package for Paymob payments.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Paymob\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Paymob\\Laravel\\Tests\\": "tests/"
+        }
+    },
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0|^11.0|^12.0|^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^11.0",
+        "phpunit/phpunit": "^10.0|^11.0|^12.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Paymob\\Laravel\\PaymobServiceProvider"
+            ],
+            "aliases": {
+                "Paymob": "Paymob\\Laravel\\Facades\\Paymob"
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
