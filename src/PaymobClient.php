@@ -2,34 +2,56 @@
 
 namespace Paymob\Laravel;
 
-class PaymobClient
+use BadMethodCallException;
+use Paymob\Laravel\Contracts\PaymobClientContract;
+use Paymob\Laravel\DTO\AuthenticationResponseDto;
+use Paymob\Laravel\DTO\IntentionResponseDto;
+use Paymob\Laravel\DTO\RegisterOrderData;
+use Paymob\Laravel\DTO\RequestPaymentKeyData;
+
+class PaymobClient implements PaymobClientContract
 {
-       public function __construct(protected  array $config)
-       {
-       }
+    public function __construct(protected array $config)
+    {
+    }
 
-       public function getApiKey()
-       {
-           return $this->config['api_key'];
-       }
-       public function baseUrl() {
-           return $this->config['base_url'];
-       }
-      public function timeout(): int
-      {
-          return (int) $this->config['timeout'];
-      }
+    public function authenticate(): AuthenticationResponseDto
+    {
+        throw new BadMethodCallException('authenticate() is not implemented yet.');
+    }
 
-      public function config(string $key, mixed $default = null): mixed
-      {
-          return $this->config[$key] ?? $default;
-      }
+    public function registerOrder(RegisterOrderData $data): IntentionResponseDto
+    {
+        throw new BadMethodCallException('registerOrder() is not implemented yet.');
+    }
 
-      public function configs(): array
-      {
-          return $this->config;
-      }
+    public function requestPaymentKey(RequestPaymentKeyData $data): IntentionResponseDto
+    {
+        throw new BadMethodCallException('requestPaymentKey() is not implemented yet.');
+    }
 
+    public function getApiKey(): string
+    {
+        return (string) ($this->config['api_key'] ?? '');
+    }
 
+    public function baseUrl(): string
+    {
+        return (string) ($this->config['base_url'] ?? '');
+    }
 
+    public function timeout(): int
+    {
+        return (int) ($this->config['timeout'] ?? 30);
+    }
+
+    public function config(string $key, mixed $default = null): mixed
+    {
+        return $this->config[$key] ?? $default;
+    }
+
+    public function configs(): array
+    {
+        return $this->config;
+    }
 }
