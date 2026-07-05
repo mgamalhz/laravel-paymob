@@ -2,7 +2,10 @@
 
 namespace Paymob\Laravel\Tests;
 
+use Paymob\Laravel\Contracts\PaymobClientContract;
+use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\PaymobClient;
+use ReflectionMethod;
 
 class PackageBootTest extends TestCase
 {
@@ -20,6 +23,14 @@ class PackageBootTest extends TestCase
         $client = $this->app->make('paymob');
 
         $this->assertInstanceOf(PaymobClient::class, $client);
+    }
+
+    public function test_it_registers_paymob_contract(): void
+    {
+        $client = $this->app->make(PaymobClientContract::class);
+
+        $this->assertInstanceOf(PaymobClient::class, $client);
+        $this->assertInstanceOf(PaymobClientContract::class, $client);
     }
 
     public function test_it_loads_config(): void
