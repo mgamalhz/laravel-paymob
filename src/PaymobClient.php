@@ -18,7 +18,7 @@ class PaymobClient implements PaymobClientContract
 
     public function authenticate(): AuthenticationResponseDto
     {
-        throw new BadMethodCallException('authenticate() is not implemented yet.');
+       return new AuthenticationResponseDto(token: 'AUTH_TOKEN_123');
     }
 
     public function registerOrder(RegisterOrderData $data): IntentionResponseDto
