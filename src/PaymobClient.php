@@ -6,6 +6,7 @@ use BadMethodCallException;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\IntentionResponseDto;
+use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
 
@@ -25,7 +26,7 @@ class PaymobClient implements PaymobClientContract
         throw new BadMethodCallException('registerOrder() is not implemented yet.');
     }
 
-    public function requestPaymentKey(RequestPaymentKeyData $data): IntentionResponseDto
+    public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto
     {
         throw new BadMethodCallException('requestPaymentKey() is not implemented yet.');
     }
