@@ -5,6 +5,7 @@ namespace Paymob\Laravel\Tests;
 use Illuminate\Support\Facades\Http;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\BillingDataDto;
+use Paymob\Laravel\DTO\IntentionResponseDto;
 use Paymob\Laravel\DTO\OrderItemDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\PaymobClient;
@@ -13,6 +14,8 @@ class PayMobTest extends TestCase
 {
     public function test_authenticate_function()
     {
+        $this->app['config']->set('paymob.api_key', 'test-api-key');
+
         Http::fake([
             'https://accept.paymob.com/api/auth/tokens' => Http::response([
                 'token' => 'AUTH_TOKEN_123',
@@ -21,6 +24,13 @@ class PayMobTest extends TestCase
 
         $client = $this->app->make(PaymobClient::class);
         $response = $client->authenticate();
+
+        Http::assertSent(function ($request) {
+            return $request->method() === 'POST'
+                && $request->url() === 'https://accept.paymob.com/api/auth/tokens'
+                && $request['api_key'] === 'test-api-key';
+        });
+
         $this->assertInstanceOf(AuthenticationResponseDto::class, $response);
         $this->assertSame('AUTH_TOKEN_123', $response->token);
     }
@@ -28,16 +38,19 @@ class PayMobTest extends TestCase
     public function test_register_order_fail(): void
     {
         Http::fake([
-            'https://accept.paymob.com/api/auth/tokens' => Http::response([
-                'token' => 'AUTH_TOKEN_FROM_STEP_1',
-            ], 201),
-            'https://accept.paymob.com/api/ecommerce/orders' => Http::response([
-                'id' => 1,
+            'https://accept.paymob.com/v1/intention/' => Http::response([
+                'id' => '01HYZK7XW3J5P8M5R4Q3T9V0E1',
+                'client_secret' => 'egy_csk_01HYZK7XW3J5P8M5R4Q3T9V0E1',
+                'intention_order_id' => 987654321,
+                'amount' => 1000,
+                'currency' => 'EGP',
+                'status' => 'intended',
+                'payment_methods' => [],
+                'created' => '2026-05-24T14:32:11Z',
             ], 201),
         ]);
 
         $client = $this->app->make(PaymobClient::class);
-        $response = $client->authenticate();
 
         $data = new RegisterOrderData(
             amount: 1000,
@@ -58,14 +71,16 @@ class PayMobTest extends TestCase
             ),
         );
 
-        try {
-            $client->registerOrder($data);
-        } catch (\Throwable) {
-        }
+        $response = $client->registerOrder($data);
 
-        Http::assertSent(function ($request) use ($response) {
-            return $request->url() === 'https://accept.paymob.com/api/ecommerce/orders'
-                && $request->header('Authorization') === ["Bearer {$response->token}"];
+        Http::assertSent(function ($request) {
+            return $request->method() === 'POST'
+                && $request->url() === 'https://accept.paymob.com/v1/intention/'
+                && $request['amount'] === 1000
+                && $request['currency'] === 'EGP';
         });
+
+        $this->assertInstanceOf(IntentionResponseDto::class, $response);
+        $this->assertSame('egy_csk_01HYZK7XW3J5P8M5R4Q3T9V0E1', $response->clientSecret);
     }
 }
