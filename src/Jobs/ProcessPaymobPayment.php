@@ -52,10 +52,9 @@ class ProcessPaymobPayment implements ShouldQueue
         if ($this->alreadyCaptured()) {
             return;
         }
+        Cache::put($this->captureCompletedKey(), true, now()->addDay());
 
         $response = $paymob->capture($this->transactionId, $this->amountCents);
-
-        Cache::put($this->captureCompletedKey(), true, now()->addDay());
 
         $this->markCaptured($response);
     }

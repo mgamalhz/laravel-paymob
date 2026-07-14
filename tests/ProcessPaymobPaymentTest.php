@@ -16,7 +16,7 @@ use Paymob\Laravel\Jobs\ProcessPaymobPayment;
 
 class ProcessPaymobPaymentTest extends TestCase
 {
-    public function test_dispatching_same_job_twice_captures_once(): void
+    public function test_job_releases_when_overlap_lock_is_held(): void
     {
         $this->app['config']->set('cache.default', 'array');
         Cache::clear();
@@ -26,13 +26,28 @@ class ProcessPaymobPaymentTest extends TestCase
 
         $this->app->instance(PaymobClientContract::class, $client);
 
-        ProcessPaymobPayment::dispatchSync($order, 987654, 1000);
-        ProcessPaymobPayment::dispatchSync($order, 987654, 1000);
+        $job = (new ProcessPaymobPayment($order, 987654, 1000))->withFakeQueueInteractions();
+        $middleware = $job->middleware()[0];
+        $lockKey = $middleware->getLockKey($job);
+        $lock = Cache::lock($lockKey, 30);
 
-        $this->assertSame(1, $client->captures);
-        $this->assertTrue(FakePaymobOrder::$capturedById[123]);
-        $this->assertSame(987654, $client->lastTransactionId);
-        $this->assertSame(1000, $client->lastAmountCents);
+        $this->assertTrue($lock->get());
+
+        try {
+            $ran = false;
+
+            $middleware->handle($job, function (ProcessPaymobPayment $job) use ($client, &$ran): void {
+                $ran = true;
+                $job->handle($client);
+            });
+
+            $this->assertFalse($ran);
+            $this->assertSame(0, $client->captures);
+            $this->assertFalse(FakePaymobOrder::$capturedById[123]);
+            $job->assertReleased(30);
+        } finally {
+            $lock->release();
+        }
     }
 
     public function test_job_uses_without_overlapping_middleware(): void
