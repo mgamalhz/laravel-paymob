@@ -7,12 +7,10 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
-use Paymob\Laravel\DTO\IntentionResponseDto;
+use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
-use Paymob\Laravel\DTO\PaymentMethodDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
-use RuntimeException;
 
 class PaymobClient implements PaymobClientContract
 {
@@ -25,54 +23,43 @@ class PaymobClient implements PaymobClientContract
      */
     public function authenticate(): AuthenticationResponseDto
     {
+        $response = $this->http()
+            ->post('/api/auth/tokens', [
+                'api_key' => $this->getApiKey(),
+            ]);
 
-      $response = $this
-          ->http( )
-          ->post('/api/auth/tokens' , [
-              'api_key' => config('paymob.api_key'),
-          ]);
+        $response->throw();
 
-         $response->throw();
-
-        $response =  $response->json();
-        $authDto =  new AuthenticationResponseDto(
+        $response = $response->json();
+        $authDto = new AuthenticationResponseDto(
             $response['token'],
         );
-        Cache::put("paymob_token"  , $authDto ,  now()->addMinutes(58) );
+        Cache::put('paymob_token', $authDto, now()->addMinutes(58));
 
         return $authDto;
-
     }
 
-    public function registerOrder(RegisterOrderData $data): IntentionResponseDto
+    public function registerOrder(RegisterOrderData $data): OrderResponseDto
     {
         $response = $this->http()
-            ->withHeaders([
-                'Authorization' => 'Token ' . $this->requiredSecretKey(),
-            ])
-            ->post("/v1/intention/", $data->toArray());
+            ->post('/api/ecommerce/orders', array_merge([
+                'auth_token' => $this->getToken(),
+                'delivery_needed' => false,
+                'amount_cents' => $data->amount,
+                'currency' => $data->currency,
+                'items' => array_map(
+                    fn ($item) => $item->toArray(),
+                    $data->items
+                ),
+            ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : []));
 
         $response->throw();
 
         $response = $response->json();
 
-        return new IntentionResponseDto(
+        return new OrderResponseDto(
             id: $response['id'],
-            clientSecret: $response['client_secret'],
-            intentionOrderId: $response['intention_order_id'],
-            amount: $response['intention_detail']['amount'] ?? $response['amount'],
-            currency: $response['intention_detail']['currency'] ?? $response['currency'],
-            status: $response['status'],
-            paymentMethods: array_map(
-                fn (array $paymentMethod): PaymentMethodDto => new PaymentMethodDto(
-                    integrationId: $paymentMethod['integration_id'],
-                    name: $paymentMethod['name'],
-                    methodType: $paymentMethod['method_type'],
-                    currency: $paymentMethod['currency'],
-                ),
-                $response['payment_methods'] ?? []
-            ),
-            created: $response['created'] ?? null,
+            createdAt: $response['created_at'] ?? null,
         );
     }
 
@@ -113,6 +100,11 @@ class PaymobClient implements PaymobClientContract
         return (int) ($this->config['timeout'] ?? 30);
     }
 
+    public function connectTimeout(): int
+    {
+        return (int) ($this->config['connect_timeout'] ?? 10);
+    }
+
     public function config(string $key, mixed $default = null): mixed
     {
         return $this->config[$key] ?? $default;
@@ -130,6 +122,8 @@ class PaymobClient implements PaymobClientContract
         return Http::baseUrl($this->baseUrl())
             ->accept('application/json')
             ->asJson()
+            ->timeout($this->timeout())
+            ->connectTimeout($this->connectTimeout())
             ->retry(3 ,  100);
     }
 
@@ -137,19 +131,5 @@ class PaymobClient implements PaymobClientContract
     private function getToken(): string {
         return Cache::get("paymob_token")?->token ?? $this->authenticate()->token;
     }
-
-    private function requiredSecretKey(): string
-    {
-        $secretKey = (string) ($this->config['secret_key'] ?? '');
-
-        if ($secretKey === '') {
-            throw new RuntimeException('Paymob secret key is required for payment intentions.');
-        }
-
-        return $secretKey;
-    }
-
-
-
 
 }

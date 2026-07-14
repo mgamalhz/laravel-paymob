@@ -8,7 +8,7 @@ return [
 
     'secret_key' => env('PAYMOB_SECRET_KEY'),
 
-    'base_url' => env('PAYMOB_BASE_URL', 'https://accept.paymob.com/api'),
+    'base_url' => env('PAYMOB_BASE_URL', 'https://accept.paymob.com'),
 
     'timeout' => env('PAYMOB_TIMEOUT', 30),
 

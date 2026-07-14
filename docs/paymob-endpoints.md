@@ -2,20 +2,13 @@
 
 ## Scope
 
-This document covers the Paymob payment flow end to end:
+This document covers the classic Paymob Accept flow used by this package:
 
 1. Authentication
-2. Payment Intention / Order Registration
+2. Order Registration
 3. Payment Key Request
 4. Transaction Callback
 5. Webhook / Response Callback
-
-> **Note:** Paymob has two integration styles:
->
-> * **New flow:** Create a payment intention and use the returned `client_secret`.
-> * **Classic flow:** Authenticate, register an order, then request a payment key/token.
->
-> Do not mix both flows in the same implementation unless there is a clear business reason.
 
 ---
 
@@ -41,79 +34,52 @@ This document covers the Paymob payment flow end to end:
 
 ### Notes
 
-* This step is mainly used in the classic Paymob Accept API flow.
-* The returned `token` is used as `auth_token` in later classic API requests.
+* This is the first step in the classic flow.
+* The returned `token` is used as `auth_token` in later requests.
 
 ---
 
-## 2. Payment Intention / Order Registration
+## 2. Order Registration
 
-| Field                      | Value                                                                                                     |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Method                     | `POST`                                                                                                    |
-| Path                       | `Base URL + /v1/intention/`                                                                               |
-| Required inputs            | `amount`, `currency`, `payment_methods`, `items`, `billing_data`                                          |
-| Meaningful response fields | `id`, `client_secret`, `intention_order_id`, `amount`, `currency`, `status`, `payment_methods`, `created` |
+| Field                      | Value                                                                 |
+| -------------------------- | --------------------------------------------------------------------- |
+| Method                     | `POST`                                                                |
+| Path                       | `Base URL + /api/ecommerce/orders`                                    |
+| Required inputs            | `auth_token`, `delivery_needed`, `amount_cents`, `currency`, `items` |
+| Meaningful response fields | `id`, `created_at`                                                    |
 
 ### Request Inputs
 
-| Field               | Required               | Description                                                                            |
-| ------------------- | ---------------------- | -------------------------------------------------------------------------------------- |
-| `amount`            | Yes                    | Total amount in the smallest currency unit. For EGP, `50000` means `500.00 EGP`.       |
-| `currency`          | Yes                    | Payment currency. Example: `EGP`.                                                      |
-| `payment_methods`   | Yes                    | Array of Paymob integration IDs or supported payment method identifiers.               |
-| `items`             | Yes                    | Payment items. For registration, this can include one item such as `Registration Fee`. |
-| `billing_data`      | Yes                    | Customer billing data.                                                                 |
-| `customer`          | Optional / Recommended | Customer identity data.                                                                |
-| `special_reference` | Recommended            | Your internal registration, order, or payment reference.                               |
-| `notification_url`  | Recommended            | Backend callback URL that Paymob calls after payment processing.                       |
-| `redirection_url`   | Recommended            | URL where the customer is redirected after checkout.                                   |
+| Field               | Required               | Description                                                                        |
+| ------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| `auth_token`        | Yes                    | Authentication token returned from `/api/auth/tokens`.                             |
+| `delivery_needed`   | Yes                    | Boolean flag used by Paymob order creation.                                        |
+| `amount_cents`      | Yes                    | Total amount in cents/smallest currency unit. For EGP, `50000` means `500.00 EGP`. |
+| `currency`          | Yes                    | Payment currency. Example: `EGP`.                                                  |
+| `items`             | Yes                    | Array of order items.                                                              |
+| `merchant_order_id` | Optional / Recommended | Your internal order reference.                                                     |
 
 ### Meaningful Response Fields
 
-| Field                              | Type      | Description                                                                                        |
-| ---------------------------------- | --------- | -------------------------------------------------------------------------------------------------- |
-| `id`                               | `string`  | Unique Paymob intention ID. Save this locally to track the payment intention.                      |
-| `client_secret`                    | `string`  | Secret used by the frontend to open Paymob Unified Checkout or Pixel for this payment intention.   |
-| `intention_order_id`               | `integer` | Paymob internal order ID related to the intention. Useful for reconciliation and webhook matching. |
-| `amount`                           | `integer` | Total payment amount in the smallest currency unit.                                                |
-| `currency`                         | `string`  | Payment currency, for example `EGP`.                                                               |
-| `status`                           | `string`  | Current intention status. `intended` means the payment was created but not completed yet.          |
-| `payment_methods`                  | `array`   | Payment methods available for this intention.                                                      |
-| `payment_methods[].integration_id` | `integer` | Paymob integration ID for the payment method.                                                      |
-| `payment_methods[].name`           | `string`  | Human-readable payment method name, for example `Card`.                                            |
-| `payment_methods[].method_type`    | `string`  | Payment method type, for example `card`.                                                           |
-| `payment_methods[].currency`       | `string`  | Currency supported by the payment method.                                                          |
-| `created`                          | `string`  | Date and time when the intention was created.                                                      |
+| Field        | Type      | Description                               |
+| ------------ | --------- | ----------------------------------------- |
+| `id`         | `integer` | Paymob order ID used in later requests.   |
+| `created_at` | `string`  | Date and time when the order was created. |
 
 ### Example Response
 
 ```json
 {
-  "id": "01HYZK7XW3J5P8M5R4Q3T9V0E1",
-  "client_secret": "egy_csk_01HYZK7XW3J5P8M5R4Q3T9V0E1",
-  "intention_order_id": 987654321,
-  "amount": 50000,
-  "currency": "EGP",
-  "status": "intended",
-  "payment_methods": [
-    {
-      "integration_id": 123456,
-      "name": "Card",
-      "method_type": "card",
-      "currency": "EGP"
-    }
-  ],
-  "created": "2026-05-24T14:32:11Z"
+  "id": 987654321,
+  "created_at": "2026-05-24T14:32:11Z"
 }
 ```
 
 ### Notes
 
-* Return `client_secret` to the frontend to start the checkout flow.
-* Do not treat `status = intended` as a successful payment.
-* Confirm payment only after receiving and verifying Paymob’s backend callback/webhook.
-* Store `id`, `client_secret`, `intention_order_id`, `amount`, `currency`, and `status` in your local payment or order table.
+* This endpoint belongs to the classic Accept API flow.
+* Save the returned `id` and use it in the payment key request.
+* Do not mix this endpoint with the newer intention flow.
 
 ---
 
@@ -153,9 +119,8 @@ This document covers the Paymob payment flow end to end:
 
 ### Notes
 
-* This endpoint belongs to the classic Paymob Accept API flow.
+* This endpoint belongs to the classic Accept API flow.
 * The returned `token` is used as the `payment_token`.
-* If you are using the new Payment Intention flow, you usually use `client_secret` instead of `payment_key`.
 
 ---
 
@@ -228,9 +193,9 @@ This document covers the Paymob payment flow end to end:
 
 ## General Notes
 
-* Keep request and response fields aligned with the actual implementation.
+* Keep request and response fields aligned with the classic Accept API flow.
 * Store Paymob IDs locally for reconciliation and debugging.
 * Always verify HMAC before updating payment or order status.
-* Do not treat a created intention, generated payment key, or redirect response as proof of successful payment.
+* Do not treat a created order, generated payment key, or redirect response as proof of successful payment.
 * Confirm the final payment result only after the backend callback is received and verified.
 * Add real request/response examples under each section once the implementation is finalized.

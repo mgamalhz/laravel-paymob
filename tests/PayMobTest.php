@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\BillingDataDto;
-use Paymob\Laravel\DTO\IntentionResponseDto;
+use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\OrderItemDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
@@ -18,12 +18,14 @@ class PayMobTest extends TestCase
 {
     public function test_authenticate_function(): void
     {
+        $baseUrl = config('paymob.base_url');
+
         $this->app['config']->set([
-            'paymob.base_url' => 'https://accept.paymob.com',
+            'paymob.base_url' => $baseUrl,
             'paymob.api_key' => 'test-api-key',
             'cache.default' => 'array',
         ]);
-        $baseUrl = config('paymob.base_url');
+
         $authUrl = $baseUrl . '/api/auth/tokens';
         $apiKey = config('paymob.api_key');
         Cache::clear();
@@ -72,25 +74,25 @@ class PayMobTest extends TestCase
         );
     }
 
-    public function test_register_order_fail(): void
+    public function test_register_order_uses_classic_order_endpoint(): void
     {
+        $baseUrl = config('paymob.base_url');
+
         $this->app['config']->set([
-            'paymob.base_url' => 'https://accept.paymob.com',
+            'paymob.base_url' => $baseUrl,
             'paymob.api_key' => 'test-api-key',
-            'paymob.secret_key' => 'test-secret-key',
             'cache.default' => 'array',
         ]);
 
+        Cache::clear();
+
         Http::fake([
-            'https://accept.paymob.com/v1/intention/' => Http::response([
-                'id' => '01HYZK7XW3J5P8M5R4Q3T9V0E1',
-                'client_secret' => 'egy_csk_01HYZK7XW3J5P8M5R4Q3T9V0E1',
-                'intention_order_id' => 987654321,
-                'amount' => 1000,
-                'currency' => 'EGP',
-                'status' => 'intended',
-                'payment_methods' => [],
-                'created' => '2026-05-24T14:32:11Z',
+            $baseUrl . '/api/auth/tokens' => Http::response([
+                'token' => 'fake-paymob-token',
+            ], 200),
+            $baseUrl . '/api/ecommerce/orders' => Http::response([
+                'id' => 987654321,
+                'created_at' => '2026-05-24T14:32:11Z',
             ], 201),
         ]);
 
@@ -119,20 +121,31 @@ class PayMobTest extends TestCase
 
         Http::assertSent(function ($request) {
             return $request->method() === 'POST'
-                && $request->url() === 'https://accept.paymob.com/v1/intention/'
-                && $request->hasHeader('Authorization', 'Token test-secret-key')
-                && $request['amount'] === 1000
+                && $request->url() === config('paymob.base_url') . '/api/auth/tokens'
+                && $request['api_key'] === 'test-api-key';
+        });
+
+        Http::assertSent(function ($request) {
+            return $request->method() === 'POST'
+                && $request->url() === config('paymob.base_url') . '/api/ecommerce/orders'
+                && $request['auth_token'] === 'fake-paymob-token'
+                && $request['delivery_needed'] === false
+                && $request['amount_cents'] === 1000
                 && $request['currency'] === 'EGP';
         });
 
-        $this->assertInstanceOf(IntentionResponseDto::class, $response);
-        $this->assertSame('egy_csk_01HYZK7XW3J5P8M5R4Q3T9V0E1', $response->clientSecret);
+        Http::assertSentCount(2);
+
+        $this->assertInstanceOf(OrderResponseDto::class, $response);
+        $this->assertSame(987654321, $response->id);
     }
 
     public function test_request_payment_key_uses_cached_auth_token_and_returns_dto(): void
     {
+        $baseUrl = config('paymob.base_url');
+
         $this->app['config']->set([
-            'paymob.base_url' => 'https://accept.paymob.com',
+            'paymob.base_url' => $baseUrl,
             'paymob.api_key' => 'test-api-key',
             'cache.default' => 'array',
         ]);
@@ -140,7 +153,7 @@ class PayMobTest extends TestCase
         Cache::put('paymob_token', new AuthenticationResponseDto('fake-paymob-token'));
 
         Http::fake([
-            'https://accept.paymob.com/api/acceptance/payment_keys' => Http::response([
+            $baseUrl . '/api/acceptance/payment_keys' => Http::response([
                 'token' => 'fake-payment-key-token',
             ], 200),
         ]);
@@ -166,7 +179,7 @@ class PayMobTest extends TestCase
 
         Http::assertSent(function (Request $request): bool {
             return $request->method() === 'POST'
-                && $request->url() === 'https://accept.paymob.com/api/acceptance/payment_keys'
+                && $request->url() === config('paymob.base_url') . '/api/acceptance/payment_keys'
                 && $request['auth_token'] === 'fake-paymob-token'
                 && $request['amount_cents'] === 1000
                 && $request['currency'] === 'EGP'
