@@ -4,7 +4,11 @@
 return [
     'api_key' => env('PAYMOB_API_KEY'),
 
-    'base_url' => env('PAYMOB_BASE_URL', 'https://accept.paymob.com/api'),
+    "integration_id" => env('PAYMOB_INTEGRATION_ID'),
+
+    'secret_key' => env('PAYMOB_SECRET_KEY'),
+
+    'base_url' => env('PAYMOB_BASE_URL', 'https://accept.paymob.com'),
 
     'timeout' => env('PAYMOB_TIMEOUT', 30),
 
