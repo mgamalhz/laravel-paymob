@@ -37,7 +37,8 @@ class PackageBootTest extends TestCase
     {
         $client = $this->app->make(PaymobClient::class);
 
-        $this->assertSame('https://accept.paymob.com/api', $client->baseUrl());
+        $this->assertSame('https://accept.paymob.com', $client->baseUrl());
         $this->assertSame(30, $client->timeout());
+        $this->assertSame(10, $client->connectTimeout());
     }
 }

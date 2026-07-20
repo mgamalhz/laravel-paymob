@@ -13,7 +13,7 @@ interface PaymobClientContract
 {
     public function authenticate(): AuthenticationResponseDto;
 
-    public function registerOrder(RegisterOrderData $data): IntentionResponseDto;
+    public function registerOrder(RegisterOrderData $data): OrderResponseDto;
 
     public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto;
 

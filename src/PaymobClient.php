@@ -21,6 +21,9 @@ class PaymobClient implements PaymobClientContract
     {
     }
 
+    /**
+     * @throws ConnectionException
+     */
     public function authenticate(): AuthenticationResponseDto
     {
         $response = $this->http()->post('/api/auth/tokens', [
@@ -38,7 +41,7 @@ class PaymobClient implements PaymobClientContract
         return $auth;
     }
 
-    public function registerOrder(RegisterOrderData $data): IntentionResponseDto
+    public function registerOrder(RegisterOrderData $data): OrderResponseDto
     {
         $response = $this->http()->post('/v1/intention/', [
             'amount' => $data->amount,
@@ -91,12 +94,29 @@ class PaymobClient implements PaymobClientContract
 
     public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto
     {
-        throw new BadMethodCallException('requestPaymentKey() is not implemented yet.');
+        $response = $this->http()
+            ->post('/api/acceptance/payment_keys', array_merge(
+                ['auth_token' => $this->getToken()],
+                $data->toArray(),
+            ));
+
+        $response->throw();
+
+        $response = $response->json();
+
+        return new PaymentKeyResponseDto(
+            token: $response['token'],
+        );
     }
 
     public function getApiKey(): string
     {
         return (string) ($this->config['api_key'] ?? '');
+    }
+
+    public function getSecretKey(): string
+    {
+        return (string) ($this->config['secret_key'] ?? '');
     }
 
     public function baseUrl(): string
@@ -107,6 +127,11 @@ class PaymobClient implements PaymobClientContract
     public function timeout(): int
     {
         return (int) ($this->config['timeout'] ?? 30);
+    }
+
+    public function connectTimeout(): int
+    {
+        return (int) ($this->config['connect_timeout'] ?? 10);
     }
 
     public function config(string $key, mixed $default = null): mixed
