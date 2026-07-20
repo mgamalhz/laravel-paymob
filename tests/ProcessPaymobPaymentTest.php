@@ -5,6 +5,7 @@ namespace Paymob\Laravel\Tests;
 use BadMethodCallException;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Cache;
+use Paymob\Laravel\Contracts\PaymobCapturable;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
@@ -61,7 +62,7 @@ class ProcessPaymobPaymentTest extends TestCase
     }
 }
 
-final class FakePaymobOrder
+final class FakePaymobOrder implements PaymobCapturable
 {
     /**
      * @var array<int, bool>
@@ -79,12 +80,12 @@ final class FakePaymobOrder
         self::$capturedById[$this->id] = false;
     }
 
-    public function isCaptured(): bool
+    public function isPaymobCaptured(): bool
     {
         return self::$capturedById[$this->id];
     }
 
-    public function markCaptured(CapturePaymentResponseDto $response): void
+    public function markPaymobCaptured(CapturePaymentResponseDto $response): void
     {
         $this->captured = true;
         $this->payment_status = 'captured';

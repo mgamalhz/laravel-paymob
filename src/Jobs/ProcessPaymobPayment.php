@@ -10,6 +10,7 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Paymob\Laravel\Contracts\PaymobCapturable;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
 use Throwable;
@@ -31,7 +32,7 @@ class ProcessPaymobPayment implements ShouldQueue
     public int $timeout = 120;
 
     public function __construct(
-        public object $order,
+        public PaymobCapturable $order,
         public int $transactionId,
         public int $amountCents,
     ) {
@@ -52,11 +53,12 @@ class ProcessPaymobPayment implements ShouldQueue
         if ($this->alreadyCaptured()) {
             return;
         }
-        Cache::put($this->captureCompletedKey(), true, now()->addDay());
 
         $response = $paymob->capture($this->transactionId, $this->amountCents);
 
         $this->markCaptured($response);
+
+        Cache::put($this->captureCompletedKey(), true, now()->addDay());
     }
 
     public function failed(Throwable $exception): void
@@ -76,62 +78,12 @@ class ProcessPaymobPayment implements ShouldQueue
             return true;
         }
 
-        if (method_exists($this->order, 'isPaymobCaptured')) {
-            return (bool) $this->order->isPaymobCaptured();
-        }
-
-        if (method_exists($this->order, 'isCaptured')) {
-            return (bool) $this->order->isCaptured();
-        }
-
-        if (($this->order->paymob_captured ?? false) === true) {
-            return true;
-        }
-
-        if (($this->order->captured ?? false) === true) {
-            return true;
-        }
-
-        if (($this->order->payment_status ?? null) === 'captured') {
-            return true;
-        }
-
-        return ($this->order->captured_at ?? null) !== null;
+        return $this->order->isPaymobCaptured();
     }
 
     private function markCaptured(CapturePaymentResponseDto $response): void
     {
-        if (method_exists($this->order, 'markPaymobCaptured')) {
-            $this->order->markPaymobCaptured($response);
-
-            return;
-        }
-
-        if (method_exists($this->order, 'markCaptured')) {
-            $this->order->markCaptured($response);
-
-            return;
-        }
-
-        if (property_exists($this->order, 'paymob_captured')) {
-            $this->order->paymob_captured = true;
-        }
-
-        if (property_exists($this->order, 'captured')) {
-            $this->order->captured = true;
-        }
-
-        if (property_exists($this->order, 'payment_status')) {
-            $this->order->payment_status = 'captured';
-        }
-
-        if (property_exists($this->order, 'captured_at') && $this->order->captured_at === null) {
-            $this->order->captured_at = now();
-        }
-
-        if (method_exists($this->order, 'save')) {
-            $this->order->save();
-        }
+        $this->order->markPaymobCaptured($response);
     }
 
     private function orderId(): string
