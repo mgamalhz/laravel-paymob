@@ -41,7 +41,7 @@ class PaymobClient implements PaymobClientContract
         return $auth;
     }
 
-    public function registerOrder(RegisterOrderData $data): OrderResponseDto
+    public function registerOrder(RegisterOrderData $data): DTO\OrderResponseDto
     {
         $response = $this->http()->post('/v1/intention/', [
             'amount' => $data->amount,
