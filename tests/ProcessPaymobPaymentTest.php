@@ -9,7 +9,7 @@ use Paymob\Laravel\Contracts\PaymobCapturable;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
-use Paymob\Laravel\DTO\IntentionResponseDto;
+use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
@@ -107,7 +107,7 @@ final class FakePaymobCaptureClient implements PaymobClientContract
         throw new BadMethodCallException('Not used in this test.');
     }
 
-    public function registerOrder(RegisterOrderData $data): IntentionResponseDto
+    public function registerOrder(RegisterOrderData $data): OrderResponseDto
     {
         throw new BadMethodCallException('Not used in this test.');
     }

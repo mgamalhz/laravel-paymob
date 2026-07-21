@@ -2,16 +2,14 @@
 
 namespace Paymob\Laravel;
 
-use BadMethodCallException;
-use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
-use Paymob\Laravel\DTO\IntentionResponseDto;
+use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
-use Paymob\Laravel\DTO\PaymentMethodDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
 
@@ -26,69 +24,43 @@ class PaymobClient implements PaymobClientContract
      */
     public function authenticate(): AuthenticationResponseDto
     {
-        $response = $this->http()->post('/api/auth/tokens', [
-            'api_key' => $this->getApiKey(),
-        ]);
+        $response = $this->http()
+            ->post('/api/auth/tokens', [
+                'api_key' => $this->getApiKey(),
+            ]);
 
         $response->throw();
 
-        $auth = new AuthenticationResponseDto(
-            token: $response->json('token'),
+        $response = $response->json();
+        $authDto = new AuthenticationResponseDto(
+            $response['token'],
         );
+        Cache::put('paymob_token', $authDto, now()->addMinutes(58));
 
-        Cache::put('paymob_token', $auth, now()->addMinutes(58));
-
-        return $auth;
+        return $authDto;
     }
 
-    public function registerOrder(RegisterOrderData $data): DTO\OrderResponseDto
+    public function registerOrder(RegisterOrderData $data): OrderResponseDto
     {
-        $response = $this->http()->post('/v1/intention/', [
-            'amount' => $data->amount,
-            'currency' => $data->currency,
-            'payment_methods' => $data->paymentMethodIds,
-            'items' => array_map(
-                static fn ($item): array => [
-                    'name' => $item->name,
-                    'amount' => $item->amount,
-                    'quantity' => $item->quantity,
-                    'description' => $item->description,
-                ],
-                $data->items,
-            ),
-            'billing_data' => [
-                'first_name' => $data->billingData->firstName,
-                'last_name' => $data->billingData->lastName,
-                'email' => $data->billingData->email,
-                'phone_number' => $data->billingData->phoneNumber,
-                'street' => $data->billingData->street,
-                'building' => $data->billingData->building,
-                'city' => $data->billingData->city,
-                'country' => $data->billingData->country,
-            ],
-        ]);
+        $response = $this->http()
+            ->post('/api/ecommerce/orders', array_merge([
+                'auth_token' => $this->getToken(),
+                'delivery_needed' => false,
+                'amount_cents' => $data->amount,
+                'currency' => $data->currency,
+                'items' => array_map(
+                    fn ($item) => $item->toArray(),
+                    $data->items
+                ),
+            ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : []));
 
         $response->throw();
 
-        $payload = $response->json();
+        $response = $response->json();
 
-        return new IntentionResponseDto(
-            id: $payload['id'],
-            clientSecret: $payload['client_secret'],
-            intentionOrderId: $payload['intention_order_id'],
-            amount: $payload['amount'],
-            currency: $payload['currency'],
-            status: $payload['status'],
-            paymentMethods: array_map(
-                static fn (array $paymentMethod): PaymentMethodDto => new PaymentMethodDto(
-                    integrationId: $paymentMethod['integration_id'],
-                    name: $paymentMethod['name'],
-                    methodType: $paymentMethod['method_type'],
-                    currency: $paymentMethod['currency'],
-                ),
-                $payload['payment_methods'] ?? [],
-            ),
-            created: $payload['created'] ?? null,
+        return new OrderResponseDto(
+            id: $response['id'],
+            createdAt: $response['created_at'] ?? null,
         );
     }
 
@@ -145,43 +117,34 @@ class PaymobClient implements PaymobClientContract
     }
 
 
+
+    private function http()
+    {
+        return Http::baseUrl($this->baseUrl())
+            ->accept('application/json')
+            ->asJson()
+            ->timeout($this->timeout())
+            ->connectTimeout($this->connectTimeout())
+            ->retry(3 ,  100);
+    }
+
+
+    private function getToken(): string {
+        return Cache::get("paymob_token")?->token ?? $this->authenticate()->token;
+    }
+
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
     {
-        $response = $this->http()->post('/api/acceptance/capture?token=' . $this->getToken(), [
-            'transaction_id' => $transactionId,
-            'amount_cents' => $amountCents,
-        ]);
+        $response = $this->http()
+            ->post('/api/acceptance/capture?token=' . rawurlencode($this->getToken()), [
+                'transaction_id' => $transactionId,
+                'amount_cents' => $amountCents,
+            ]);
 
         $response->throw();
 
         return new CapturePaymentResponseDto(
             payload: $response->json(),
         );
-    }
-
-    private function http(): PendingRequest
-    {
-        return Http::baseUrl($this->baseHostUrl())
-            ->acceptJson()
-            ->asJson()
-            ->timeout($this->timeout())
-            ->connectTimeout((int) ($this->config['connect_timeout'] ?? 10))
-            ->retry(3, 100);
-    }
-
-    private function getToken(): string
-    {
-        return Cache::get('paymob_token')?->token ?? $this->authenticate()->token;
-    }
-
-    private function baseHostUrl(): string
-    {
-        $baseUrl = rtrim($this->baseUrl(), '/');
-
-        if (str_ends_with($baseUrl, '/api')) {
-            return substr($baseUrl, 0, -4);
-        }
-
-        return $baseUrl;
     }
 }
