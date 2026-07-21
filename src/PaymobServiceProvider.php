@@ -9,9 +9,15 @@ class PaymobServiceProvider extends ServiceProvider
 {
     public function boot()
     {
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+
         $this->publishes([
             __DIR__ . '/../config/paymob.php' => config_path('paymob.php'),
         ], 'paymob-config');
+
+        $this->publishes([
+            __DIR__ . '/../database/migrations' => database_path('migrations'),
+        ], 'paymob-migrations');
     }
 
     public function register()
