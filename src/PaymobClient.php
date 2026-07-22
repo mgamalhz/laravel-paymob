@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
+use Paymob\Laravel\DTO\CapturePaymentResponseDto;
 use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
@@ -132,4 +133,18 @@ class PaymobClient implements PaymobClientContract
         return Cache::get("paymob_token")?->token ?? $this->authenticate()->token;
     }
 
+    public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
+    {
+        $response = $this->http()
+            ->post('/api/acceptance/capture?token=' . rawurlencode($this->getToken()), [
+                'transaction_id' => $transactionId,
+                'amount_cents' => $amountCents,
+            ]);
+
+        $response->throw();
+
+        return new CapturePaymentResponseDto(
+            payload: $response->json(),
+        );
+    }
 }
