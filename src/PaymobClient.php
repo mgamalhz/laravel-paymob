@@ -15,8 +15,68 @@ use Paymob\Laravel\DTO\RequestPaymentKeyData;
 
 class PaymobClient implements PaymobClientContract
 {
+    private const HMAC_FIELDS = [
+        'amount_cents',
+        'created_at',
+        'currency',
+        'error_occured',
+        'has_parent_transaction',
+        'id',
+        'integration_id',
+        'is_3d_secure',
+        'is_auth',
+        'is_capture',
+        'is_refunded',
+        'is_standalone_payment',
+        'is_voided',
+        'order.id',
+        'owner',
+        'pending',
+        'source_data.pan',
+        'source_data.sub_type',
+        'source_data.type',
+        'success',
+    ];
+
     public function __construct(protected array $config)
     {
+    }
+
+    public static function checkHmac(mixed $input, ?string $hmacSecret = null, ?string $incomingHmac = null): bool
+    {
+        if (! is_array($input)) {
+            return false;
+        }
+
+        $incomingHmac ??= data_get($input, 'hmac');
+        $hmacSecret ??= (string) config('paymob.hmac_secret', '');
+
+        if (! is_string($incomingHmac) || $incomingHmac === '' || $hmacSecret === '') {
+            return false;
+        }
+
+        $expectedHmac = hash_hmac('sha512', self::buildHmacString($input), $hmacSecret);
+
+        return hash_equals($expectedHmac, $incomingHmac);
+    }
+
+    private static function buildHmacString(array $input): string
+    {
+        $payload = data_get($input, 'obj', $input);
+
+        return implode('', array_map(
+            fn (string $field): string => self::normalizeHmacValue(data_get($payload, $field)),
+            self::HMAC_FIELDS,
+        ));
+    }
+
+    private static function normalizeHmacValue(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        return (string) $value;
     }
 
     /**
