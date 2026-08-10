@@ -6,6 +6,7 @@ use BadMethodCallException;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Paymob\Laravel\Contracts\PaymobCapturable;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
@@ -15,6 +16,7 @@ use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
 use Paymob\Laravel\Jobs\ProcessPaymobPayment;
+use Paymob\Laravel\Jobs\StorePaymobReceipt;
 
 class ProcessPaymobPaymentTest extends TestCase
 {
@@ -23,6 +25,7 @@ class ProcessPaymobPaymentTest extends TestCase
         parent::setUp();
 
         $this->artisan('migrate')->run();
+        Queue::fake([StorePaymobReceipt::class]);
     }
 
     public function test_job_releases_when_overlap_lock_is_held(): void
@@ -108,6 +111,7 @@ class ProcessPaymobPaymentTest extends TestCase
             'amount_cents' => 1000,
         ]);
         $this->assertTrue(FakePaymobOrder::$capturedById[123]);
+        Queue::assertPushed(StorePaymobReceipt::class);
     }
 }
 

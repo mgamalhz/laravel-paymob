@@ -143,6 +143,8 @@ class ProcessPaymobPayment implements ShouldQueue
             'response_payload' => $response->payload,
             'captured_at' => now(),
         ])->save();
+
+        StorePaymobReceipt::dispatch($payment->id);
     }
 
     private function paymentReference(): string

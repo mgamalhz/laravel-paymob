@@ -15,6 +15,10 @@ class Payment extends Model
         'status',
         'response_payload',
         'captured_at',
+        'disk',
+        'filename',
+        'key',
+        'stored_at',
     ];
 
     protected $casts = [
@@ -23,4 +27,10 @@ class Payment extends Model
         'response_payload' => 'array',
         'captured_at' => 'datetime',
     ];
+
+    public function receipt()
+    {
+        return $this->hasOne(PaymentReceipt::class);
+    }
+
 }
