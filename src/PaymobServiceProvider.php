@@ -14,9 +14,9 @@ class PaymobServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__ . '/../config/paymob.php' => config_path('paymob.php'),
         ], 'paymob-config');
-        $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
+        $this->loadRoutesFrom(__DIR__ . '/Routes/paymob.php');
         $this->publishes([
-            __DIR__ . '/../routes/paymob.php' => base_path('routes/paymob.php'),
+            __DIR__ . '/Routes/paymob.php' => base_path('routes/paymob.php'),
         ]);
         $this->publishes([
             __DIR__ . '/../database/migrations' => database_path('migrations'),

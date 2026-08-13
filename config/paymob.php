@@ -16,5 +16,5 @@ return [
 
     'paymob_webhook_url' => env('PAYMOB_WEBHOOK_URL', ''),
 
-    'hmac' => env('PAYMOB_HMAC', ''),
+    'hmac_secret' => env('PAYMOB_HMAC_SECRET', env('PAYMOB_HMAC', '')),
 ];
