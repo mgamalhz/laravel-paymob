@@ -5,12 +5,19 @@ namespace Paymob\Laravel;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
-class PayMobWebHockController extends  controller
+class PayMobWebHockController extends Controller
 {
     public function run(Request $request)
     {
-        PaymobClient::checkHmac($request->input('hmac'));
-        return view('paymob::webhook');
+        $request->validate([
+            'hmac' => ['required', 'string'],
+        ]);
+
+        if (! PaymobClient::checkHmac($request->all())) {
+            abort(403, 'Invalid Paymob webhook signature.');
+        }
+
+        return response()->json(['message' => 'Webhook received.']);
     }
 
 }
