@@ -12,6 +12,7 @@ use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
+use Paymob\Laravel\Models\PaymobWebhookEvent;
 
 class PaymobClient implements PaymobClientContract
 {
@@ -58,6 +59,22 @@ class PaymobClient implements PaymobClientContract
         $expectedHmac = hash_hmac('sha512', self::buildHmacString($input), $hmacSecret);
 
         return hash_equals($expectedHmac, $incomingHmac);
+    }
+
+    public static function recordWebhookEvent(array $payload, ?array $originalPayload = null): bool
+    {
+        $transactionId = (int) data_get($payload, 'obj.id');
+
+        if (PaymobWebhookEvent::query()->where('transaction_id', $transactionId)->exists()) {
+            return false;
+        }
+
+        PaymobWebhookEvent::query()->create([
+            'transaction_id' => $transactionId,
+            'payload' => $originalPayload ?? $payload,
+        ]);
+
+        return true;
     }
 
     private static function buildHmacString(array $input): string

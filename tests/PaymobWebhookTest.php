@@ -2,9 +2,18 @@
 
 namespace Paymob\Laravel\Tests;
 
+use Paymob\Laravel\Models\PaymobWebhookEvent;
+
 class PaymobWebhookTest extends TestCase
 {
     private const HMAC_SECRET = 'test-hmac-secret';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->artisan('migrate')->run();
+    }
 
     protected function defineEnvironment($app): void
     {
@@ -18,6 +27,26 @@ class PaymobWebhookTest extends TestCase
         $this->postJson('/', $payload)
             ->assertOk()
             ->assertJson(['message' => 'Webhook received.']);
+    }
+
+    public function test_webhook_does_not_record_same_transaction_twice(): void
+    {
+        $payload = $this->signedPayload($this->payloadObject());
+
+        $this->postJson('/', $payload)
+            ->assertOk()
+            ->assertJson(['message' => 'Webhook received.']);
+
+        $this->postJson('/', $payload)
+            ->assertOk()
+            ->assertJson(['message' => 'Webhook already processed.']);
+
+        $this->assertSame(
+            1,
+            PaymobWebhookEvent::query()
+                ->where('transaction_id', 987654321)
+                ->count()
+        );
     }
 
     public function test_webhook_rejects_missing_hmac(): void
