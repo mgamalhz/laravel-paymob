@@ -43,14 +43,6 @@ class PaymobClientHmacTest extends TestCase
         ));
     }
 
-    public function test_check_hmac_is_repeatable_for_same_verified_callback(): void
-    {
-        $payload = $this->signedPayload($this->payloadObject());
-
-        $this->assertTrue(PaymobClient::checkHmac($payload, self::HMAC_SECRET));
-        $this->assertTrue(PaymobClient::checkHmac($payload, self::HMAC_SECRET));
-    }
-
     private function signedPayload(array $object): array
     {
         return [

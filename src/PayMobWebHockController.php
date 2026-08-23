@@ -9,10 +9,6 @@ class PayMobWebHockController extends Controller
 {
     public function run(Request $request)
     {
-        $request->validate([
-            'hmac' => ['required', 'string'],
-        ]);
-
         if (! PaymobClient::checkHmac($request->all())) {
             abort(403, 'Invalid Paymob webhook signature.');
         }

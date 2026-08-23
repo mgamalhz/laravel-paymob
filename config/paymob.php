@@ -14,7 +14,7 @@ return [
 
     'connect_timeout' => env('PAYMOB_CONNECT_TIMEOUT', 10),
 
-    'paymob_webhook_url' => env('PAYMOB_WEBHOOK_URL', ''),
+    'paymob_webhook_url' => env('PAYMOB_WEBHOOK_URL', '/'),
 
     'hmac_secret' => env('PAYMOB_HMAC', ''),
 ];
