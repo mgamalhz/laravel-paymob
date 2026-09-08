@@ -18,5 +18,7 @@ interface PaymobClientContract
 
     public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto;
 
+    public function paymentRedirectUrl(string $paymentToken, ?int $iframeId = null): string;
+
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto;
 }

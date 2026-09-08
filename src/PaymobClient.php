@@ -5,6 +5,8 @@ namespace Paymob\Laravel;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
@@ -112,24 +114,36 @@ class PaymobClient implements PaymobClientContract
         $authDto = new AuthenticationResponseDto(
             $response['token'],
         );
-        Cache::put('paymob_token', $authDto, now()->addMinutes(58));
+        Cache::put('paymob_token', $authDto->token, now()->addMinutes(58));
 
         return $authDto;
     }
 
     public function registerOrder(RegisterOrderData $data): OrderResponseDto
     {
+        $payload = array_merge([
+            'auth_token' => $this->getToken(),
+            'delivery_needed' => false,
+            'amount_cents' => $data->amount,
+            'currency' => $data->currency,
+            'items' => array_map(
+                fn ($item) => $item->toArray(),
+                $data->items
+            ),
+        ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : []);
+
+        Log::debug('Paymob register order request', [
+            'url' => rtrim($this->baseUrl(), '/') . '/api/ecommerce/orders',
+            'payload' => $this->maskSensitivePayload($payload),
+        ]);
+
         $response = $this->http()
-            ->post('/api/ecommerce/orders', array_merge([
-                'auth_token' => $this->getToken(),
-                'delivery_needed' => false,
-                'amount_cents' => $data->amount,
-                'currency' => $data->currency,
-                'items' => array_map(
-                    fn ($item) => $item->toArray(),
-                    $data->items
-                ),
-            ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : []));
+            ->post('/api/ecommerce/orders', $payload);
+
+        Log::debug('Paymob register order response', [
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ]);
 
         $response->throw();
 
@@ -143,11 +157,23 @@ class PaymobClient implements PaymobClientContract
 
     public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto
     {
+        $payload = array_merge(
+            ['auth_token' => $this->getToken()],
+            $data->toArray(),
+        );
+
+        Log::debug('Paymob payment key request', [
+            'url' => rtrim($this->baseUrl(), '/') . '/api/acceptance/payment_keys',
+            'payload' => $this->maskSensitivePayload($payload),
+        ]);
+
         $response = $this->http()
-            ->post('/api/acceptance/payment_keys', array_merge(
-                ['auth_token' => $this->getToken()],
-                $data->toArray(),
-            ));
+            ->post('/api/acceptance/payment_keys', $payload);
+
+        Log::debug('Paymob payment key response', [
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ]);
 
         $response->throw();
 
@@ -156,6 +182,19 @@ class PaymobClient implements PaymobClientContract
         return new PaymentKeyResponseDto(
             token: $response['token'],
         );
+    }
+
+    public function paymentRedirectUrl(string $paymentToken, ?int $iframeId = null): string
+    {
+        $iframeId ??= $this->iframeId();
+
+        if ($iframeId <= 0) {
+            throw new InvalidArgumentException('Paymob iframe id is not configured.');
+        }
+
+        return rtrim($this->baseUrl(), '/')
+            . '/api/acceptance/iframes/' . $iframeId
+            . '?payment_token=' . urlencode($paymentToken);
     }
 
     public function getApiKey(): string
@@ -171,6 +210,11 @@ class PaymobClient implements PaymobClientContract
     public function baseUrl(): string
     {
         return (string) ($this->config['base_url'] ?? '');
+    }
+
+    public function iframeId(): int
+    {
+        return (int) ($this->config['iframe_id'] ?? 0);
     }
 
     public function timeout(): int
@@ -202,12 +246,37 @@ class PaymobClient implements PaymobClientContract
             ->asJson()
             ->timeout($this->timeout())
             ->connectTimeout($this->connectTimeout())
-            ->retry(3 ,  100);
+            ->retry(3, 100, throw: false);
     }
 
 
     private function getToken(): string {
-        return Cache::get("paymob_token")?->token ?? $this->authenticate()->token;
+        $cachedToken = Cache::get('paymob_token');
+
+        if (is_string($cachedToken) && $cachedToken !== '') {
+            return $cachedToken;
+        }
+
+        if ($cachedToken instanceof AuthenticationResponseDto) {
+            return $cachedToken->token;
+        }
+
+        if ($cachedToken !== null) {
+            Cache::forget('paymob_token');
+        }
+
+        return $this->authenticate()->token;
+    }
+
+    private function maskSensitivePayload(array $payload): array
+    {
+        foreach (['auth_token', 'token', 'api_key'] as $key) {
+            if (array_key_exists($key, $payload)) {
+                $payload[$key] = '[masked]';
+            }
+        }
+
+        return $payload;
     }
 
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
