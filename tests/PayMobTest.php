@@ -18,7 +18,7 @@ class PayMobTest extends TestCase
 {
     public function test_authenticate_function(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,
@@ -69,7 +69,7 @@ class PayMobTest extends TestCase
 
     public function test_register_order_uses_classic_order_endpoint(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,
@@ -137,7 +137,7 @@ class PayMobTest extends TestCase
 
     public function test_request_payment_key_uses_cached_auth_token_and_returns_dto(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,

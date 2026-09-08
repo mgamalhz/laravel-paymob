@@ -37,6 +37,11 @@ final class FakeConcurrentPaymobCaptureClient implements PaymobClientContract
         throw new BadMethodCallException('Not used in this test.');
     }
 
+    public function paymentRedirectUrl(string $paymentToken, ?int $iframeId = null): string
+    {
+        throw new BadMethodCallException('Not used in this test.');
+    }
+
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
     {
         $this->captures++;
