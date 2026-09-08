@@ -2,45 +2,66 @@
 
 namespace Paymob\Laravel\Tests;
 
-use PHPUnit\Framework\TestCase;
-use Paymob\Laravel\PaymobClient;
+use Paymob\Laravel\Models\PaymobWebhookEvent;
 
-class PaymobClientHmacTest extends TestCase
+class PaymobWebhookTest extends TestCase
 {
     private const HMAC_SECRET = 'test-hmac-secret';
 
-    public function test_check_hmac_accepts_verified_transaction_callback(): void
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->artisan('migrate')->run();
+    }
+
+    protected function defineEnvironment($app): void
+    {
+        $app['config']->set('paymob.hmac_secret', self::HMAC_SECRET);
+    }
+
+    public function test_webhook_accepts_valid_hmac(): void
     {
         $payload = $this->signedPayload($this->payloadObject());
 
-        $this->assertTrue(PaymobClient::checkHmac($payload, self::HMAC_SECRET));
+        $this->postJson('/', $payload)
+            ->assertOk()
+            ->assertJson(['message' => 'Webhook received.']);
     }
 
-    public function test_check_hmac_rejects_tampered_transaction_callback(): void
+    public function test_webhook_does_not_record_same_transaction_twice(): void
     {
         $payload = $this->signedPayload($this->payloadObject());
-        $payload['obj']['success'] = false;
 
-        $this->assertFalse(PaymobClient::checkHmac($payload, self::HMAC_SECRET));
+        $this->postJson('/', $payload)
+            ->assertOk()
+            ->assertJson(['message' => 'Webhook received.']);
+
+        $this->postJson('/', $payload)
+            ->assertOk()
+            ->assertJson(['message' => 'Webhook already processed.']);
+
+        $this->assertSame(
+            1,
+            PaymobWebhookEvent::query()
+                ->where('transaction_id', 987654321)
+                ->count()
+        );
     }
 
-    public function test_check_hmac_rejects_missing_signature(): void
+    public function test_webhook_rejects_missing_hmac(): void
     {
-        $payload = ['obj' => $this->payloadObject()];
-
-        $this->assertFalse(PaymobClient::checkHmac($payload, self::HMAC_SECRET));
+        $this->postJson('/', ['obj' => $this->payloadObject()])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('hmac');
     }
 
-    public function test_check_hmac_can_use_explicit_secret_and_signature(): void
+    public function test_webhook_rejects_invalid_hmac(): void
     {
-        $object = $this->payloadObject();
-        $hmac = $this->hmacFor($object);
+        $payload = $this->signedPayload($this->payloadObject());
+        $payload['hmac'] = str_repeat('0', 128);
 
-        $this->assertTrue(PaymobClient::checkHmac(
-            ['obj' => $object],
-            self::HMAC_SECRET,
-            $hmac,
-        ));
+        $this->postJson('/', $payload)->assertForbidden();
     }
 
     private function signedPayload(array $object): array
@@ -76,7 +97,7 @@ class PaymobClientHmacTest extends TestCase
             . $object['source_data']['type']
             . $this->bool($object['success']);
 
-        return hash_hmac('sha512', $concatenated, self::HMAC_SECRET);
+        return hash_hmac('sha512', $concatenated, config('paymob.hmac_secret'));
     }
 
     private function payloadObject(): array

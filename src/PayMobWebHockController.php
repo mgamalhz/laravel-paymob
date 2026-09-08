@@ -17,41 +17,20 @@ class PayMobWebHockController extends Controller
 
     public function run(Request $request)
     {
+        $payload = $request->validate([
+            'hmac' => ['required', 'string'],
+            'obj' => ['required', 'array'],
+            'obj.id' => ['required', 'integer'],
+        ]);
+
         if (! PaymobClient::checkHmac($request->all())) {
             abort(403, 'Invalid Paymob webhook signature.');
         }
 
-        event(new PaymobWebhookReceived($this->payloadFrom($request)));
-
-        return response()->json(['status' => 'ok']);
-    }
-
-    private function payloadFrom(Request $request): PaymobWebhookPayload
-    {
-        $payload = $request->input('obj', $request->all());
-
-        return new PaymobWebhookPayload(
-            transactionId: (string) data_get($payload, 'id'),
-            orderId: (string) data_get($payload, 'order.id'),
-            amountCents: (int) data_get($payload, 'amount_cents'),
-            status: $this->statusFrom($payload),
-            verifiedAt: new DateTimeImmutable(),
-        );
-    }
-
-    /**
-     * @param array<string, mixed> $payload
-     */
-    private function statusFrom(array $payload): string
-    {
-        if ((bool) data_get($payload, 'success')) {
-            return 'paid';
+        if (! PaymobClient::recordWebhookEvent($payload, $request->all())) {
+            return response()->json(['message' => 'Webhook already processed.']);
         }
 
-        if ((bool) data_get($payload, 'pending')) {
-            return 'pending';
-        }
-
-        return 'failed';
+        return response()->json(['message' => 'Webhook received.']);
     }
 }

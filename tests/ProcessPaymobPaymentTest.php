@@ -92,6 +92,23 @@ class ProcessPaymobPaymentTest extends TestCase
         $this->assertSame(1, DB::table('payments')->where('paymob_reference', '987654')->count());
     }
 
+    public function test_replayed_transaction_is_not_captured_twice(): void
+    {
+        $order = new FakePaymobOrder(id: 123);
+        $client = new FakePaymobCaptureClient();
+
+        (new ProcessPaymobPayment($order, 987654, 1000))->handle($client);
+        (new ProcessPaymobPayment($order, 987654, 1000))->handle($client);
+
+        $this->assertSame(1, $client->captures);
+        $this->assertSame(1, DB::table('payments')->where('paymob_reference', '987654')->count());
+        $this->assertDatabaseHas('payments', [
+            'paymob_reference' => '987654',
+            'transaction_id' => 987654,
+            'status' => 'captured',
+        ]);
+    }
+
     public function test_concurrent_captures_create_one_payment_and_one_charge(): void
     {
         $order = new FakePaymobOrder(id: 123);
