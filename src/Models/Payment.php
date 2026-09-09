@@ -2,6 +2,7 @@
 
 namespace Paymob\Laravel\Models;
 
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 
 class Payment extends Model
@@ -33,4 +34,8 @@ class Payment extends Model
         return $this->hasOne(PaymentReceipt::class);
     }
 
+    public function webhookEvents(): HasMany
+    {
+        return $this->hasMany(PaymobWebhookEvent::class, 'transaction_id', 'transaction_id');
+    }
 }

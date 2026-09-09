@@ -14,12 +14,11 @@ return [
 
     'connect_timeout' => env('PAYMOB_CONNECT_TIMEOUT', 10),
 
-    'paymob_webhook_url' => env('PAYMOB_WEBHOOK_URL', ''),
-
-    'hmac' => env('PAYMOB_HMAC', ''),
+    'paymob_webhook_url' => env('PAYMOB_WEBHOOK_URL', '/'),
 
     'receipts' => [
         'disk' => env('PAYMOB_RECEIPTS_DISK', 's3'),
         'prefix' => env('PAYMOB_RECEIPTS_PREFIX', 'paymob/receipts'),
     ],
+    'hmac_secret' => env('PAYMOB_HMAC', ''),
 ];
