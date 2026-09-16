@@ -12,8 +12,8 @@ final readonly class RegisterOrderData implements ObjectEntriesTransformerInterf
     }
 
     /**
-     * @param list<int> $paymentMethodIds
-     * @param list<OrderItemDto> $items
+     * @param  list<int>  $paymentMethodIds
+     * @param  list<OrderItemDto>  $items
      */
     public function __construct(
         public int $amount,
@@ -25,10 +25,7 @@ final readonly class RegisterOrderData implements ObjectEntriesTransformerInterf
         public ?string $specialReference = null,
         public ?string $notificationUrl = null,
         public ?string $redirectionUrl = null,
-    ) {
-    }
-
-
+    ) {}
 
     public function toArray(): array
     {

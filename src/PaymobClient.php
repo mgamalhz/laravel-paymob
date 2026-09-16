@@ -41,9 +41,7 @@ class PaymobClient implements PaymobClientContract
         'success',
     ];
 
-    public function __construct(protected array $config)
-    {
-    }
+    public function __construct(protected array $config) {}
 
     public static function checkHmac(mixed $input, ?string $hmacSecret = null, ?string $incomingHmac = null): bool
     {
@@ -133,7 +131,7 @@ class PaymobClient implements PaymobClientContract
         ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : []);
 
         Log::debug('Paymob register order request', [
-            'url' => rtrim($this->baseUrl(), '/') . '/api/ecommerce/orders',
+            'url' => rtrim($this->baseUrl(), '/').'/api/ecommerce/orders',
             'payload' => $this->maskSensitivePayload($payload),
         ]);
 
@@ -163,7 +161,7 @@ class PaymobClient implements PaymobClientContract
         );
 
         Log::debug('Paymob payment key request', [
-            'url' => rtrim($this->baseUrl(), '/') . '/api/acceptance/payment_keys',
+            'url' => rtrim($this->baseUrl(), '/').'/api/acceptance/payment_keys',
             'payload' => $this->maskSensitivePayload($payload),
         ]);
 
@@ -193,8 +191,8 @@ class PaymobClient implements PaymobClientContract
         }
 
         return rtrim($this->baseUrl(), '/')
-            . '/api/acceptance/iframes/' . $iframeId
-            . '?payment_token=' . urlencode($paymentToken);
+            .'/api/acceptance/iframes/'.$iframeId
+            .'?payment_token='.urlencode($paymentToken);
     }
 
     public function getApiKey(): string
@@ -237,8 +235,6 @@ class PaymobClient implements PaymobClientContract
         return $this->config;
     }
 
-
-
     private function http()
     {
         return Http::baseUrl($this->baseUrl())
@@ -249,8 +245,8 @@ class PaymobClient implements PaymobClientContract
             ->retry(3, 100, throw: false);
     }
 
-
-    private function getToken(): string {
+    private function getToken(): string
+    {
         $cachedToken = Cache::get('paymob_token');
 
         if (is_string($cachedToken) && $cachedToken !== '') {
@@ -282,7 +278,7 @@ class PaymobClient implements PaymobClientContract
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
     {
         $response = $this->http()
-            ->post('/api/acceptance/capture?token=' . rawurlencode($this->getToken()), [
+            ->post('/api/acceptance/capture?token='.rawurlencode($this->getToken()), [
                 'transaction_id' => $transactionId,
                 'amount_cents' => $amountCents,
             ]);
