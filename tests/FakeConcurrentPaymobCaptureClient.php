@@ -18,9 +18,7 @@ final class FakeConcurrentPaymobCaptureClient implements PaymobClientContract
 
     public int $nestedAttempts = 0;
 
-    public function __construct(private FakePaymobOrder $order)
-    {
-    }
+    public function __construct(private FakePaymobOrder $order) {}
 
     public function authenticate(): AuthenticationResponseDto
     {

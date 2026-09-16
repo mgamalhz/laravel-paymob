@@ -23,7 +23,7 @@ class ProcessPaymobPaymentTest extends TestCase
         Cache::clear();
 
         $order = new FakePaymobOrder(id: 123);
-        $client = new FakePaymobCaptureClient();
+        $client = new FakePaymobCaptureClient;
 
         $this->app->instance(PaymobClientContract::class, $client);
 
@@ -76,7 +76,7 @@ class ProcessPaymobPaymentTest extends TestCase
         ]);
 
         $order = new FakePaymobOrder(id: 123);
-        $client = new FakePaymobCaptureClient();
+        $client = new FakePaymobCaptureClient;
 
         (new ProcessPaymobPayment($order, 987654, 1000))->handle($client);
 
@@ -87,7 +87,7 @@ class ProcessPaymobPaymentTest extends TestCase
     public function test_replayed_transaction_is_not_captured_twice(): void
     {
         $order = new FakePaymobOrder(id: 123);
-        $client = new FakePaymobCaptureClient();
+        $client = new FakePaymobCaptureClient;
 
         (new ProcessPaymobPayment($order, 987654, 1000))->handle($client);
         (new ProcessPaymobPayment($order, 987654, 1000))->handle($client);

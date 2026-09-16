@@ -5,11 +5,12 @@ namespace Paymob\Laravel\DTO;
 use Paymob\Laravel\Contracts\ObjectEntriesTransformerInterface;
 use Paymob\Laravel\Traits\ObjectEntriesTransformerTrait;
 
-final readonly class IntentionResponseDto   implements ObjectEntriesTransformerInterface
+final readonly class IntentionResponseDto implements ObjectEntriesTransformerInterface
 {
     use ObjectEntriesTransformerTrait;
+
     /**
-     * @param list<PaymentMethodDto> $paymentMethods
+     * @param  list<PaymentMethodDto>  $paymentMethods
      */
     public function __construct(
         public string $id,
@@ -20,6 +21,5 @@ final readonly class IntentionResponseDto   implements ObjectEntriesTransformerI
         public string $status,
         public array $paymentMethods,
         public ?string $created = null,
-    ) {
-    }
+    ) {}
 }

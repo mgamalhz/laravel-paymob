@@ -78,26 +78,26 @@ class PaymobWebhookTest extends TestCase
     private function hmacFor(array $object): string
     {
         $concatenated = ''
-            . $object['amount_cents']
-            . $object['created_at']
-            . $object['currency']
-            . $this->bool($object['error_occured'])
-            . $this->bool($object['has_parent_transaction'])
-            . $object['id']
-            . $object['integration_id']
-            . $this->bool($object['is_3d_secure'])
-            . $this->bool($object['is_auth'])
-            . $this->bool($object['is_capture'])
-            . $this->bool($object['is_refunded'])
-            . $this->bool($object['is_standalone_payment'])
-            . $this->bool($object['is_voided'])
-            . $object['order']['id']
-            . $object['owner']
-            . $this->bool($object['pending'])
-            . $object['source_data']['pan']
-            . $object['source_data']['sub_type']
-            . $object['source_data']['type']
-            . $this->bool($object['success']);
+            .$object['amount_cents']
+            .$object['created_at']
+            .$object['currency']
+            .$this->bool($object['error_occured'])
+            .$this->bool($object['has_parent_transaction'])
+            .$object['id']
+            .$object['integration_id']
+            .$this->bool($object['is_3d_secure'])
+            .$this->bool($object['is_auth'])
+            .$this->bool($object['is_capture'])
+            .$this->bool($object['is_refunded'])
+            .$this->bool($object['is_standalone_payment'])
+            .$this->bool($object['is_voided'])
+            .$object['order']['id']
+            .$object['owner']
+            .$this->bool($object['pending'])
+            .$object['source_data']['pan']
+            .$object['source_data']['sub_type']
+            .$object['source_data']['type']
+            .$this->bool($object['success']);
 
         return hash_hmac('sha512', $concatenated, config('paymob.hmac_secret'));
     }
