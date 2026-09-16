@@ -11,4 +11,3 @@ class Paymob extends Facade
         return 'paymob';
     }
 }
-
