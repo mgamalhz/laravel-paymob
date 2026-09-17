@@ -131,7 +131,9 @@ class PayMobTest extends TestCase
                 && $request['auth_token'] === 'fake-paymob-token'
                 && $request['delivery_needed'] === false
                 && $request['amount_cents'] === 1000
-                && $request['currency'] === 'EGP';
+                && $request['currency'] === 'EGP'
+                && $request['items'][0]['amount_cents'] === 1000
+                && ! array_key_exists('amount', $request['items'][0]);
         });
 
         Http::assertSentCount(2);
@@ -208,5 +210,35 @@ class PayMobTest extends TestCase
         $method = new \ReflectionMethod($client, 'tokenCacheKey');
 
         return $method->invoke($client);
+    }
+
+    public function test_payment_redirect_url_uses_configured_iframe_id(): void
+    {
+        $this->app['config']->set([
+            'paymob.base_url' => 'https://accept.paymob.com/',
+            'paymob.iframe_id' => 456,
+        ]);
+
+        $client = $this->app->make(PaymobClient::class);
+
+        $this->assertSame(
+            'https://accept.paymob.com/api/acceptance/iframes/456?payment_token=fake-payment-token',
+            $client->paymentRedirectUrl('fake-payment-token'),
+        );
+    }
+
+    public function test_payment_redirect_url_can_use_explicit_iframe_id(): void
+    {
+        $this->app['config']->set([
+            'paymob.base_url' => 'https://accept.paymob.com',
+            'paymob.iframe_id' => null,
+        ]);
+
+        $client = $this->app->make(PaymobClient::class);
+
+        $this->assertSame(
+            'https://accept.paymob.com/api/acceptance/iframes/789?payment_token=fake-payment-token',
+            $client->paymentRedirectUrl('fake-payment-token', 789),
+        );
     }
 }

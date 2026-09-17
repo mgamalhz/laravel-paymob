@@ -160,16 +160,7 @@ class PaymobClient implements PaymobClientContract
         $authDto = new AuthenticationResponseDto(
             $response['token'],
         );
-
-        try {
-            $this->cache()->put(
-                $this->tokenCacheKey(),
-                $authDto,
-                max(1, (int) $this->config('token_cache.ttl_seconds', 3300)),
-            );
-        } catch (Throwable) {
-            // The freshly fetched token remains usable for this request.
-        }
+        Cache::put('paymob_token', $authDto, now()->addMinutes(58));
 
         return $authDto;
     }
@@ -219,6 +210,19 @@ class PaymobClient implements PaymobClientContract
         );
     }
 
+    public function paymentRedirectUrl(string $paymentToken, ?int $iframeId = null): string
+    {
+        $iframeId ??= $this->iframeId();
+
+        if ($iframeId <= 0) {
+            throw new InvalidArgumentException('Paymob iframe id is not configured.');
+        }
+
+        return rtrim($this->baseUrl(), '/')
+            . '/api/acceptance/iframes/' . $iframeId
+            . '?payment_token=' . urlencode($paymentToken);
+    }
+
     public function getApiKey(): string
     {
         return (string) ($this->config['api_key'] ?? '');
@@ -232,6 +236,11 @@ class PaymobClient implements PaymobClientContract
     public function baseUrl(): string
     {
         return (string) ($this->config['base_url'] ?? '');
+    }
+
+    public function iframeId(): int
+    {
+        return (int) ($this->config['iframe_id'] ?? 0);
     }
 
     public function timeout(): int
@@ -278,6 +287,33 @@ class PaymobClient implements PaymobClientContract
         return Cache::store(is_string($store) && $store !== '' ? $store : null);
     }
 
+    private function getToken(): string {
+        $cachedToken = Cache::get('paymob_token');
+
+        if (is_string($cachedToken) && $cachedToken !== '') {
+            return $cachedToken;
+        }
+
+        if ($cachedToken instanceof AuthenticationResponseDto) {
+            return $cachedToken->token;
+        }
+
+        if ($cachedToken !== null) {
+            Cache::forget('paymob_token');
+        }
+
+        return $this->authenticate()->token;
+    }
+
+    private function maskSensitivePayload(array $payload): array
+    {
+        foreach (['auth_token', 'token', 'api_key'] as $key) {
+            if (array_key_exists($key, $payload)) {
+                $payload[$key] = '[masked]';
+            }
+        }
+
+        return $payload;
     private function tokenCacheKey(): string
     {
         $scope = implode('|', [
@@ -340,8 +376,9 @@ class PaymobClient implements PaymobClientContract
             ->post('/api/acceptance/capture', [
                 'transaction_id' => $transactionId,
                 'amount_cents' => $amountCents,
-            ]),
-        );
+            ]);
+
+        $response->throw();
 
         return new CapturePaymentResponseDto(
             payload: $response->json(),
