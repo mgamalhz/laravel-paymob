@@ -61,7 +61,7 @@ class PayMobTest extends TestCase
             $response->token
         );
 
-        $cachedDto = Cache::get('paymob_token');
+        $cachedDto = Cache::get($this->tokenCacheKey($client));
 
         $this->assertInstanceOf(
             AuthenticationResponseDto::class,
@@ -150,15 +150,23 @@ class PayMobTest extends TestCase
             'cache.default' => 'array',
         ]);
 
-        Cache::put('paymob_token', new AuthenticationResponseDto('fake-paymob-token'));
-
         Http::fake([
+            $baseUrl . '/api/auth/tokens' => Http::response([
+                'token' => 'fake-paymob-token',
+            ], 200),
             $baseUrl . '/api/acceptance/payment_keys' => Http::response([
                 'token' => 'fake-payment-key-token',
             ], 200),
         ]);
 
         $client = $this->app->make(PaymobClient::class);
+
+        $client->authenticate();
+        Http::fake([
+            $baseUrl . '/api/acceptance/payment_keys' => Http::response([
+                'token' => 'fake-payment-key-token',
+            ], 200),
+        ]);
 
         $response = $client->requestPaymentKey(new RequestPaymentKeyData(
             amountCents: 1000,
@@ -193,5 +201,12 @@ class PayMobTest extends TestCase
 
         $this->assertInstanceOf(PaymentKeyResponseDto::class, $response);
         $this->assertSame('fake-payment-key-token', $response->token);
+    }
+
+    private function tokenCacheKey(PaymobClient $client): string
+    {
+        $method = new \ReflectionMethod($client, 'tokenCacheKey');
+
+        return $method->invoke($client);
     }
 }
