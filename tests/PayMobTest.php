@@ -13,12 +13,13 @@ use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
 use Paymob\Laravel\PaymobClient;
+use Paymob\Laravel\Support\PaymobTokenCacheKey;
 
 class PayMobTest extends TestCase
 {
     public function test_authenticate_function(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://accept.paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,
@@ -61,7 +62,7 @@ class PayMobTest extends TestCase
             $response->token
         );
 
-        $cachedDto = Cache::get($this->tokenCacheKey($client));
+        $cachedDto = Cache::get(PaymobTokenCacheKey::make(config('paymob')));
 
         $this->assertInstanceOf(
             AuthenticationResponseDto::class,
@@ -76,7 +77,7 @@ class PayMobTest extends TestCase
 
     public function test_register_order_uses_classic_order_endpoint(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://accept.paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,
@@ -144,7 +145,7 @@ class PayMobTest extends TestCase
 
     public function test_request_payment_key_uses_cached_auth_token_and_returns_dto(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://accept.paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,
@@ -203,13 +204,6 @@ class PayMobTest extends TestCase
 
         $this->assertInstanceOf(PaymentKeyResponseDto::class, $response);
         $this->assertSame('fake-payment-key-token', $response->token);
-    }
-
-    private function tokenCacheKey(PaymobClient $client): string
-    {
-        $method = new \ReflectionMethod($client, 'tokenCacheKey');
-
-        return $method->invoke($client);
     }
 
     public function test_payment_redirect_url_uses_configured_iframe_id(): void

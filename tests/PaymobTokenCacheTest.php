@@ -87,7 +87,7 @@ class PaymobTokenCacheTest extends TestCase
         Cache::shouldReceive('store')->andReturn($repository);
         $repository->shouldReceive('get')->once()->andThrow(new RuntimeException('cache unavailable'));
         $repository->shouldReceive('lock')->once()->andThrow(new RuntimeException('cache unavailable'));
-        $repository->shouldReceive('put')->once()->andThrow(new RuntimeException('cache unavailable'));
+        $repository->shouldNotReceive('put');
 
         Http::fake([
             '*/api/auth/tokens' => Http::response(['token' => 'uncached-token']),
