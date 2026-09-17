@@ -17,6 +17,8 @@ class PaymobWebhookTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        parent::defineEnvironment($app);
+
         $app['config']->set('paymob.hmac_secret', self::HMAC_SECRET);
     }
 
