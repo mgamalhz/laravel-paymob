@@ -62,9 +62,17 @@ class PayMobTest extends TestCase
             $response->token
         );
 
-        $cachedToken = Cache::get(PaymobTokenCacheKey::make(config('paymob')));
+        $cachedDto = Cache::get(PaymobTokenCacheKey::make(config('paymob')));
 
-        $this->assertSame('fake-paymob-token', $cachedToken);
+        $this->assertInstanceOf(
+            AuthenticationResponseDto::class,
+            $cachedDto
+        );
+
+        $this->assertSame(
+            'fake-paymob-token',
+            $cachedDto->token
+        );
     }
 
     public function test_register_order_uses_classic_order_endpoint(): void

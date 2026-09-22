@@ -66,7 +66,7 @@ class PaymobTokenCacheTest extends TestCase
     {
         $repository = Mockery::mock(Repository::class);
         $lock = Mockery::mock(Lock::class);
-        $refreshed = 'other-worker-token';
+        $refreshed = new AuthenticationResponseDto('other-worker-token');
 
         Cache::shouldReceive('store')->andReturn($repository);
         $repository->shouldReceive('get')->twice()->andReturn(null, $refreshed);

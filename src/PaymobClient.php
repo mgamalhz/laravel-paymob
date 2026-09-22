@@ -109,12 +109,10 @@ class PaymobClient implements PaymobClientContract
      */
     public function authenticate(): AuthenticationResponseDto
     {
-        return new AuthenticationResponseDto(
-            $this->tokens->get(fn (): string => $this->requestAuthenticationToken()),
-        );
+        return $this->tokens->get(fn (): AuthenticationResponseDto => $this->requestAuthentication());
     }
 
-    private function requestAuthenticationToken(): string
+    private function requestAuthentication(): AuthenticationResponseDto
     {
         try {
             $response = $this->http()
@@ -131,7 +129,7 @@ class PaymobClient implements PaymobClientContract
             throw new RuntimeException('Could not connect to Paymob authentication service.');
         }
 
-        return (string) $response->json('token');
+        return new AuthenticationResponseDto($response->json('token'));
     }
 
     public function registerOrder(RegisterOrderData $data): OrderResponseDto
@@ -251,15 +249,15 @@ class PaymobClient implements PaymobClientContract
     private function authenticatedRequest(callable $request): Response
     {
         try {
-            $token = $this->tokens->get(fn (): string => $this->requestAuthenticationToken());
-            $response = $request($token);
+            $authentication = $this->authenticate();
+            $response = $request($authentication->token);
 
             if (in_array($response->status(), [401, 403], true)) {
-                $token = $this->tokens->refresh(
-                    $token,
-                    fn (): string => $this->requestAuthenticationToken(),
+                $authentication = $this->tokens->refresh(
+                    $authentication->token,
+                    fn (): AuthenticationResponseDto => $this->requestAuthentication(),
                 );
-                $response = $request($token);
+                $response = $request($authentication->token);
             }
 
             $response->throw();
