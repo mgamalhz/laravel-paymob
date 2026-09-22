@@ -10,12 +10,13 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
 use Paymob\Laravel\Contracts\PaymobCapturable;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
 use Paymob\Laravel\Models\Payment;
+use Paymob\Laravel\Support\PaymobLogEvents;
+use Paymob\Laravel\Support\PaymobLogger;
 use Throwable;
 
 class ProcessPaymobPayment implements ShouldQueue
@@ -85,7 +86,8 @@ class ProcessPaymobPayment implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        Log::error('Paymob capture job failed.', [
+        PaymobLogger::error(PaymobLogEvents::FAILURE, [
+            'operation' => 'capture_job',
             'order_id' => $this->orderId(),
             'transaction_id' => $this->mask((string) $this->transactionId),
             'amount_cents' => $this->amountCents,
