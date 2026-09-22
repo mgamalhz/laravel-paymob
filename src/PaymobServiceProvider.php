@@ -4,7 +4,6 @@ namespace Paymob\Laravel;
 
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Illuminate\Support\ServiceProvider;
-use Paymob\Laravel\Services\PaymobTokenManager;
 
 class PaymobServiceProvider extends ServiceProvider
 {
@@ -28,15 +27,8 @@ class PaymobServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/paymob.php', 'paymob');
 
-        $this->app->singleton(PaymobTokenManager::class, function ($app) {
-            return new PaymobTokenManager($app['config']->get('paymob'));
-        });
-
         $this->app->singleton(PaymobClient::class, function ($app) {
-            return new PaymobClient(
-                $app['config']->get('paymob'),
-                $app->make(PaymobTokenManager::class),
-            );
+            return new PaymobClient($app['config']->get('paymob'));
         });
 
         $this->app->singleton(PaymobClientContract::class, function ($app) {
