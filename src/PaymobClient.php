@@ -3,9 +3,6 @@
 namespace Paymob\Laravel;
 
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
-use Illuminate\Http\Client\Response;
-use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Paymob\Laravel\Contracts\PaymobClientContract;
@@ -16,8 +13,6 @@ use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
 use Paymob\Laravel\Models\PaymobWebhookEvent;
-use RuntimeException;
-use Throwable;
 
 class PaymobClient implements PaymobClientContract
 {
@@ -106,55 +101,12 @@ class PaymobClient implements PaymobClientContract
      */
     public function authenticate(): AuthenticationResponseDto
     {
-        if ($cached = $this->cachedAuthentication()) {
-            return $cached;
-        }
+        $response = $this->http()
+            ->post('/api/auth/tokens', [
+                'api_key' => $this->getApiKey(),
+            ]);
 
-        $refreshStarted = false;
-
-        try {
-            return $this->cache()->lock(
-                $this->tokenCacheKey() . ':lock',
-                max(1, (int) $this->config('token_cache.lock_seconds', 10)),
-            )->block(
-                max(1, (int) $this->config('token_cache.lock_wait_seconds', 5)),
-                function () use (&$refreshStarted): AuthenticationResponseDto {
-                    if ($cached = $this->cachedAuthentication()) {
-                        return $cached;
-                    }
-
-                    $refreshStarted = true;
-
-                    return $this->requestAuthentication();
-                },
-            );
-        } catch (Throwable $exception) {
-            if ($refreshStarted) {
-                throw $exception;
-            }
-
-            // A cache outage must not make Paymob unavailable. Lock timeouts are
-            // also safe to recover from by making one uncached authentication call.
-            return $this->requestAuthentication();
-        }
-    }
-
-    private function requestAuthentication(): AuthenticationResponseDto
-    {
-        try {
-            $response = $this->http()
-                ->post('/api/auth/tokens', [
-                    'api_key' => $this->getApiKey(),
-                ]);
-
-            $response->throw();
-        } catch (RequestException $exception) {
-            throw new RuntimeException(
-                'Paymob authentication failed with HTTP status ' . $exception->response->status() . '.',
-            );
-        } catch (ConnectionException) {
-            throw new RuntimeException('Could not connect to Paymob authentication service.');
-        }
+        $response->throw();
 
         $response = $response->json();
         $authDto = new AuthenticationResponseDto(
@@ -167,10 +119,9 @@ class PaymobClient implements PaymobClientContract
 
     public function registerOrder(RegisterOrderData $data): OrderResponseDto
     {
-        $response = $this->authenticatedRequest(
-            fn (string $token): Response => $this->http()
+        $response = $this->http()
             ->post('/api/ecommerce/orders', array_merge([
-                'auth_token' => $token,
+                'auth_token' => $this->getToken(),
                 'delivery_needed' => false,
                 'amount_cents' => $data->amount,
                 'currency' => $data->currency,
@@ -178,8 +129,7 @@ class PaymobClient implements PaymobClientContract
                     fn ($item) => $item->toArray(),
                     $data->items
                 ),
-            ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : [])),
-        );
+            ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : []));
 
         $response->throw();
 
@@ -193,13 +143,11 @@ class PaymobClient implements PaymobClientContract
 
     public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto
     {
-        $response = $this->authenticatedRequest(
-            fn (string $token): Response => $this->http()
+        $response = $this->http()
             ->post('/api/acceptance/payment_keys', array_merge(
-                ['auth_token' => $token],
+                ['auth_token' => $this->getToken()],
                 $data->toArray(),
-            )),
-        );
+            ));
 
         $response->throw();
 
@@ -208,19 +156,6 @@ class PaymobClient implements PaymobClientContract
         return new PaymentKeyResponseDto(
             token: $response['token'],
         );
-    }
-
-    public function paymentRedirectUrl(string $paymentToken, ?int $iframeId = null): string
-    {
-        $iframeId ??= $this->iframeId();
-
-        if ($iframeId <= 0) {
-            throw new InvalidArgumentException('Paymob iframe id is not configured.');
-        }
-
-        return rtrim($this->baseUrl(), '/')
-            . '/api/acceptance/iframes/' . $iframeId
-            . '?payment_token=' . urlencode($paymentToken);
     }
 
     public function getApiKey(): string
@@ -238,11 +173,6 @@ class PaymobClient implements PaymobClientContract
         return (string) ($this->config['base_url'] ?? '');
     }
 
-    public function iframeId(): int
-    {
-        return (int) ($this->config['iframe_id'] ?? 0);
-    }
-
     public function timeout(): int
     {
         return (int) ($this->config['timeout'] ?? 30);
@@ -255,7 +185,7 @@ class PaymobClient implements PaymobClientContract
 
     public function config(string $key, mixed $default = null): mixed
     {
-        return data_get($this->config, $key, $default);
+        return $this->config[$key] ?? $default;
     }
 
     public function configs(): array
@@ -272,108 +202,18 @@ class PaymobClient implements PaymobClientContract
             ->asJson()
             ->timeout($this->timeout())
             ->connectTimeout($this->connectTimeout())
-            ->retry(
-                3,
-                100,
-                fn (Throwable $exception): bool => $exception instanceof ConnectionException,
-                false,
-            );
+            ->retry(3 ,  100);
     }
 
-    private function cache(): CacheRepository
-    {
-        $store = $this->config('token_cache.store');
-
-        return Cache::store(is_string($store) && $store !== '' ? $store : null);
-    }
 
     private function getToken(): string {
-        $cachedToken = Cache::get('paymob_token');
-
-        if (is_string($cachedToken) && $cachedToken !== '') {
-            return $cachedToken;
-        }
-
-        if ($cachedToken instanceof AuthenticationResponseDto) {
-            return $cachedToken->token;
-        }
-
-        if ($cachedToken !== null) {
-            Cache::forget('paymob_token');
-        }
-
-        return $this->authenticate()->token;
-    }
-
-    private function maskSensitivePayload(array $payload): array
-    {
-        foreach (['auth_token', 'token', 'api_key'] as $key) {
-            if (array_key_exists($key, $payload)) {
-                $payload[$key] = '[masked]';
-            }
-        }
-
-        return $payload;
-    private function tokenCacheKey(): string
-    {
-        $scope = implode('|', [
-            strtolower(rtrim($this->baseUrl(), '/')),
-            (string) $this->config('token_cache.environment', config('app.env', 'production')),
-            hash('sha256', $this->getApiKey()),
-        ]);
-
-        return (string) $this->config('token_cache.prefix', 'paymob:auth-token')
-            . ':' . hash('sha256', $scope);
-    }
-
-    private function cachedAuthentication(): ?AuthenticationResponseDto
-    {
-        try {
-            $cached = $this->cache()->get($this->tokenCacheKey());
-
-            return $cached instanceof AuthenticationResponseDto ? $cached : null;
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    private function forgetCachedAuthentication(): void
-    {
-        try {
-            $this->cache()->forget($this->tokenCacheKey());
-        } catch (Throwable) {
-            // Authentication can still be refreshed without cache access.
-        }
-    }
-
-    private function authenticatedRequest(callable $request): Response
-    {
-        try {
-            $response = $request($this->authenticate()->token);
-
-            if (in_array($response->status(), [401, 403], true)) {
-                $this->forgetCachedAuthentication();
-                $response = $request($this->requestAuthentication()->token);
-            }
-
-            $response->throw();
-
-            return $response;
-        } catch (RequestException $exception) {
-            throw new RuntimeException(
-                'Paymob request failed with HTTP status ' . $exception->response->status() . '.',
-            );
-        } catch (ConnectionException) {
-            throw new RuntimeException('Could not connect to Paymob.');
-        }
+        return Cache::get("paymob_token")?->token ?? $this->authenticate()->token;
     }
 
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
     {
-        $response = $this->authenticatedRequest(
-            fn (string $token): Response => $this->http()
-            ->withQueryParameters(['token' => $token])
-            ->post('/api/acceptance/capture', [
+        $response = $this->http()
+            ->post('/api/acceptance/capture?token=' . rawurlencode($this->getToken()), [
                 'transaction_id' => $transactionId,
                 'amount_cents' => $amountCents,
             ]);
