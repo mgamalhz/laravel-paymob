@@ -8,6 +8,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
