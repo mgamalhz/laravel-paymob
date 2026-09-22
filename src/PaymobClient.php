@@ -247,6 +247,7 @@ class PaymobClient implements PaymobClientContract
             );
     }
 
+
     private function authenticatedRequest(callable $request): Response
     {
         try {
