@@ -18,6 +18,10 @@ return [
 
     'paymob_webhook_url' => env('PAYMOB_WEBHOOK_URL', '/'),
 
+    'receipts' => [
+        'disk' => env('PAYMOB_RECEIPTS_DISK', 's3'),
+        'prefix' => env('PAYMOB_RECEIPTS_PREFIX', 'paymob/receipts'),
+    ],
     'hmac_secret' => env('PAYMOB_HMAC', ''),
 
     'token_cache' => [
