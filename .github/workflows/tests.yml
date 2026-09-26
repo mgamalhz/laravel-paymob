@@ -45,7 +45,9 @@ jobs:
           composer require "orchestra/testbench:${{ matrix.testbench }}" --dev --no-interaction --no-update
 
       - name: Install dependencies
-        run: composer update --${{ matrix.dependencies }} --prefer-dist --no-interaction
+        run: |
+          composer config audit.block-insecure false
+          composer update --${{ matrix.dependencies }} --prefer-dist --no-interaction --with-all-dependencies
 
       - name: Run tests
         run: vendor/bin/phpunit
