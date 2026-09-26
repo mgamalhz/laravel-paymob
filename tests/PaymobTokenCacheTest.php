@@ -2,12 +2,12 @@
 
 namespace Paymob\Laravel\Tests;
 
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
 use Illuminate\Contracts\Cache\Lock;
-use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Mockery;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\BillingDataDto;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
@@ -66,16 +66,9 @@ class PaymobTokenCacheTest extends TestCase
 
     public function test_worker_that_waited_for_lock_uses_token_refreshed_by_other_worker(): void
     {
-        $repository = Mockery::mock(Repository::class);
-        $lock = Mockery::mock(Lock::class);
-        $refreshed = new AuthenticationResponseDto('other-worker-token');
+        $repository = new Repository(new WaitedTokenStore(new AuthenticationResponseDto('other-worker-token')));
 
         Cache::shouldReceive('store')->andReturn($repository);
-        $repository->shouldReceive('get')->twice()->andReturn(null, $refreshed);
-        $repository->shouldReceive('lock')->once()->andReturn($lock);
-        $lock->shouldReceive('block')->once()->andReturnUsing(
-            fn (int $seconds, callable $callback) => $callback(),
-        );
 
         $client = new PaymobClient(config('paymob'));
 
@@ -85,11 +78,9 @@ class PaymobTokenCacheTest extends TestCase
 
     public function test_cache_outage_falls_back_to_an_uncached_authentication_call(): void
     {
-        $repository = Mockery::mock(Repository::class);
+        $repository = new Repository(new UnavailableStore);
+
         Cache::shouldReceive('store')->andReturn($repository);
-        $repository->shouldReceive('get')->once()->andThrow(new RuntimeException('cache unavailable'));
-        $repository->shouldReceive('lock')->once()->andThrow(new RuntimeException('cache unavailable'));
-        $repository->shouldReceive('put')->once()->andThrow(new RuntimeException('cache unavailable'));
 
         Http::fake([
             '*/api/auth/tokens' => Http::response(['token' => 'uncached-token']),
@@ -152,8 +143,7 @@ class PaymobTokenCacheTest extends TestCase
         $this->assertSame(2, $authCalls);
         $this->assertSame(2, $paymentCalls);
         Http::assertSentCount(4);
-        Http::assertSent(fn (Request $request): bool =>
-            $request->url() === 'https://accept.paymob.test/api/acceptance/payment_keys'
+        Http::assertSent(fn (Request $request): bool => $request->url() === 'https://accept.paymob.test/api/acceptance/payment_keys'
             && $request['auth_token'] === 'fresh-token'
         );
     }
@@ -213,4 +203,69 @@ class PaymobTokenCacheTest extends TestCase
             ),
         );
     }
+}
+
+class WaitedTokenStore extends ArrayStore
+{
+    private int $gets = 0;
+
+    public function __construct(private readonly AuthenticationResponseDto $refreshed)
+    {
+        parent::__construct();
+    }
+
+    public function get($key): ?AuthenticationResponseDto
+    {
+        $this->gets++;
+
+        return $this->gets === 1 ? null : $this->refreshed;
+    }
+
+    public function lock($name, $seconds = 0, $owner = null): Lock
+    {
+        return new ImmediateLock;
+    }
+}
+
+class UnavailableStore extends ArrayStore
+{
+    public function get($key): never
+    {
+        throw new RuntimeException('cache unavailable');
+    }
+
+    public function put($key, $value, $seconds): never
+    {
+        throw new RuntimeException('cache unavailable');
+    }
+
+    public function lock($name, $seconds = 0, $owner = null): never
+    {
+        throw new RuntimeException('cache unavailable');
+    }
+}
+
+class ImmediateLock implements Lock
+{
+    public function get($callback = null): mixed
+    {
+        return is_callable($callback) ? $callback() : true;
+    }
+
+    public function block($seconds, $callback = null): mixed
+    {
+        return is_callable($callback) ? $callback() : true;
+    }
+
+    public function release(): bool
+    {
+        return true;
+    }
+
+    public function owner(): string
+    {
+        return '';
+    }
+
+    public function forceRelease(): void {}
 }
