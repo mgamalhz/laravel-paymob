@@ -28,7 +28,7 @@ return [
         'lock_wait_seconds' => env('PAYMOB_TOKEN_CACHE_LOCK_WAIT_SECONDS', 5),
     ],
 
-    "retry_limit" => 5,
+    'retry_limit' => 5,
     'retry_base_delay_ms' => 500,
     'retry_max_delay_ms' => 10000,
     'retry_jitter_ms' => 250,

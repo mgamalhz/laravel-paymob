@@ -35,8 +35,6 @@ class PaymobRetryTest extends TestCase
 
     public function test_transient_server_error_retries_and_succeeds_without_logging_sensitive_payload(): void
     {
-        Log::spy();
-
         $authCalls = 0;
         $paymentCalls = 0;
 
@@ -54,16 +52,9 @@ class PaymobRetryTest extends TestCase
                 : Http::response(['token' => 'payment-key-token']);
         });
 
-        $response = (new PaymobClient(config('paymob')))->requestPaymentKey($this->paymentKeyData());
-
-        $this->assertSame('payment-key-token', $response->token);
-        $this->assertSame(1, $authCalls);
-        $this->assertSame(2, $paymentCalls);
-
-        Log::shouldHaveReceived('warning')->once()->with(
+        Log::shouldReceive('warning')->once()->with(
             'Retrying Paymob request.',
-            Mockery::on(fn (array $context): bool =>
-                $context['attempt'] === 1
+            Mockery::on(fn (array $context): bool => $context['attempt'] === 1
                 && $context['max_attempts'] === 3
                 && $context['delay_ms'] === 0
                 && $context['status'] === 500
@@ -73,6 +64,12 @@ class PaymobRetryTest extends TestCase
                 && ! array_key_exists('token', $context)
             ),
         );
+
+        $response = (new PaymobClient(config('paymob')))->requestPaymentKey($this->paymentKeyData());
+
+        $this->assertSame('payment-key-token', $response->token);
+        $this->assertSame(1, $authCalls);
+        $this->assertSame(2, $paymentCalls);
     }
 
     public function test_rate_limit_response_is_retried(): void
@@ -138,8 +135,6 @@ class PaymobRetryTest extends TestCase
 
     public function test_validation_error_is_not_retried(): void
     {
-        Log::spy();
-
         $paymentCalls = 0;
 
         Http::fake(function (Request $request) use (&$paymentCalls) {
@@ -152,6 +147,8 @@ class PaymobRetryTest extends TestCase
             return Http::response(['message' => 'validation failed'], 422);
         });
 
+        Log::shouldReceive('warning')->never();
+
         try {
             (new PaymobClient(config('paymob')))->requestPaymentKey($this->paymentKeyData());
             $this->fail('Expected the request to fail.');
@@ -162,7 +159,6 @@ class PaymobRetryTest extends TestCase
         }
 
         $this->assertSame(1, $paymentCalls);
-        Log::shouldNotHaveReceived('warning');
     }
 
     public function test_order_creation_without_idempotency_reference_is_not_retried(): void
@@ -212,8 +208,7 @@ class PaymobRetryTest extends TestCase
 
         $this->assertSame(123, $response->id);
         $this->assertSame(2, $orderCalls);
-        Http::assertSent(fn (Request $request): bool =>
-            $request->url() === 'https://accept.paymob.test/api/ecommerce/orders'
+        Http::assertSent(fn (Request $request): bool => $request->url() === 'https://accept.paymob.test/api/ecommerce/orders'
             && $request['merchant_order_id'] === 'order-123'
         );
     }
