@@ -20,6 +20,13 @@ return [
 
     'hmac_secret' => env('PAYMOB_HMAC', ''),
 
+    'logging' => [
+        'enabled' => env('PAYMOB_LOGGING_ENABLED', true),
+        'channel' => env('PAYMOB_LOG_CHANNEL'),
+        'include_payloads' => env('PAYMOB_LOG_PAYLOADS', false),
+        'correlation_header' => env('PAYMOB_CORRELATION_HEADER', 'X-Correlation-ID'),
+    ],
+
     'token_cache' => [
         'store' => env('PAYMOB_TOKEN_CACHE_STORE'),
         'environment' => env('PAYMOB_TOKEN_CACHE_ENVIRONMENT', env('APP_ENV', 'production')),

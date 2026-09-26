@@ -25,7 +25,7 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
         $app['config']->set('paymob.integration_id', null);
         $app['config']->set('paymob.iframe_id', null);
         $app['config']->set('paymob.secret_key', null);
-        $app['config']->set('paymob.base_url', null);
+        $app['config']->set('paymob.base_url', 'https://accept.paymob.com');
         $app['config']->set('paymob.paymob_webhook_url', '/');
         $app['config']->set('paymob.hmac_secret', null);
         $app['config']->set('paymob.retry_base_delay_ms', 0);
