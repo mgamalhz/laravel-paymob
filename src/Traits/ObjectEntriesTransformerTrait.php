@@ -25,7 +25,6 @@ trait ObjectEntriesTransformerTrait
         return $data;
     }
 
-
     private function transformValue(mixed $value): mixed
     {
         if ($value instanceof ObjectEntriesTransformerInterface) {
@@ -36,7 +35,7 @@ trait ObjectEntriesTransformerTrait
             return array_map(
                 function (mixed $item) {
                     return $this->transformValue($item);
-                } ,
+                },
                 $value
             );
         }

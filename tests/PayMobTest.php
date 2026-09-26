@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\BillingDataDto;
-use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\OrderItemDto;
+use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
@@ -26,7 +26,7 @@ class PayMobTest extends TestCase
             'cache.default' => 'array',
         ]);
 
-        $authUrl = $baseUrl . '/api/auth/tokens';
+        $authUrl = $baseUrl.'/api/auth/tokens';
         $apiKey = config('paymob.api_key');
         Cache::clear();
 
@@ -87,10 +87,10 @@ class PayMobTest extends TestCase
         Cache::clear();
 
         Http::fake([
-            $baseUrl . '/api/auth/tokens' => Http::response([
+            $baseUrl.'/api/auth/tokens' => Http::response([
                 'token' => 'fake-paymob-token',
             ], 200),
-            $baseUrl . '/api/ecommerce/orders' => Http::response([
+            $baseUrl.'/api/ecommerce/orders' => Http::response([
                 'id' => 987654321,
                 'created_at' => '2026-05-24T14:32:11Z',
             ], 201),
@@ -121,13 +121,13 @@ class PayMobTest extends TestCase
 
         Http::assertSent(function ($request) {
             return $request->method() === 'POST'
-                && $request->url() === config('paymob.base_url') . '/api/auth/tokens'
+                && $request->url() === config('paymob.base_url').'/api/auth/tokens'
                 && $request['api_key'] === 'test-api-key';
         });
 
         Http::assertSent(function ($request) {
             return $request->method() === 'POST'
-                && $request->url() === config('paymob.base_url') . '/api/ecommerce/orders'
+                && $request->url() === config('paymob.base_url').'/api/ecommerce/orders'
                 && $request['auth_token'] === 'fake-paymob-token'
                 && $request['delivery_needed'] === false
                 && $request['amount_cents'] === 1000
@@ -153,10 +153,10 @@ class PayMobTest extends TestCase
         ]);
 
         Http::fake([
-            $baseUrl . '/api/auth/tokens' => Http::response([
+            $baseUrl.'/api/auth/tokens' => Http::response([
                 'token' => 'fake-paymob-token',
             ], 200),
-            $baseUrl . '/api/acceptance/payment_keys' => Http::response([
+            $baseUrl.'/api/acceptance/payment_keys' => Http::response([
                 'token' => 'fake-payment-key-token',
             ], 200),
         ]);
@@ -165,7 +165,7 @@ class PayMobTest extends TestCase
 
         $client->authenticate();
         Http::fake([
-            $baseUrl . '/api/acceptance/payment_keys' => Http::response([
+            $baseUrl.'/api/acceptance/payment_keys' => Http::response([
                 'token' => 'fake-payment-key-token',
             ], 200),
         ]);
@@ -189,7 +189,7 @@ class PayMobTest extends TestCase
 
         Http::assertSent(function (Request $request): bool {
             return $request->method() === 'POST'
-                && $request->url() === config('paymob.base_url') . '/api/acceptance/payment_keys'
+                && $request->url() === config('paymob.base_url').'/api/acceptance/payment_keys'
                 && $request['auth_token'] === 'fake-paymob-token'
                 && $request['amount_cents'] === 1000
                 && $request['currency'] === 'EGP'
