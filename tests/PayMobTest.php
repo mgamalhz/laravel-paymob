@@ -18,7 +18,7 @@ class PayMobTest extends TestCase
 {
     public function test_authenticate_function(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://accept.paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,
@@ -61,7 +61,7 @@ class PayMobTest extends TestCase
             $response->token
         );
 
-        $cachedDto = Cache::get('paymob_token');
+        $cachedDto = Cache::get($this->tokenCacheKey($client));
 
         $this->assertInstanceOf(
             AuthenticationResponseDto::class,
@@ -76,7 +76,7 @@ class PayMobTest extends TestCase
 
     public function test_register_order_uses_classic_order_endpoint(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://accept.paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,
@@ -131,7 +131,9 @@ class PayMobTest extends TestCase
                 && $request['auth_token'] === 'fake-paymob-token'
                 && $request['delivery_needed'] === false
                 && $request['amount_cents'] === 1000
-                && $request['currency'] === 'EGP';
+                && $request['currency'] === 'EGP'
+                && $request['items'][0]['amount_cents'] === 1000
+                && ! array_key_exists('amount', $request['items'][0]);
         });
 
         Http::assertSentCount(2);
@@ -142,7 +144,7 @@ class PayMobTest extends TestCase
 
     public function test_request_payment_key_uses_cached_auth_token_and_returns_dto(): void
     {
-        $baseUrl = config('paymob.base_url');
+        $baseUrl = 'https://accept.paymob.test';
 
         $this->app['config']->set([
             'paymob.base_url' => $baseUrl,
@@ -150,15 +152,23 @@ class PayMobTest extends TestCase
             'cache.default' => 'array',
         ]);
 
-        Cache::put('paymob_token', new AuthenticationResponseDto('fake-paymob-token'));
-
         Http::fake([
+            $baseUrl . '/api/auth/tokens' => Http::response([
+                'token' => 'fake-paymob-token',
+            ], 200),
             $baseUrl . '/api/acceptance/payment_keys' => Http::response([
                 'token' => 'fake-payment-key-token',
             ], 200),
         ]);
 
         $client = $this->app->make(PaymobClient::class);
+
+        $client->authenticate();
+        Http::fake([
+            $baseUrl . '/api/acceptance/payment_keys' => Http::response([
+                'token' => 'fake-payment-key-token',
+            ], 200),
+        ]);
 
         $response = $client->requestPaymentKey(new RequestPaymentKeyData(
             amountCents: 1000,
@@ -193,5 +203,42 @@ class PayMobTest extends TestCase
 
         $this->assertInstanceOf(PaymentKeyResponseDto::class, $response);
         $this->assertSame('fake-payment-key-token', $response->token);
+    }
+
+    private function tokenCacheKey(PaymobClient $client): string
+    {
+        $method = new \ReflectionMethod($client, 'tokenCacheKey');
+
+        return $method->invoke($client);
+    }
+
+    public function test_payment_redirect_url_uses_configured_iframe_id(): void
+    {
+        $this->app['config']->set([
+            'paymob.base_url' => 'https://accept.paymob.com/',
+            'paymob.iframe_id' => 456,
+        ]);
+
+        $client = $this->app->make(PaymobClient::class);
+
+        $this->assertSame(
+            'https://accept.paymob.com/api/acceptance/iframes/456?payment_token=fake-payment-token',
+            $client->paymentRedirectUrl('fake-payment-token'),
+        );
+    }
+
+    public function test_payment_redirect_url_can_use_explicit_iframe_id(): void
+    {
+        $this->app['config']->set([
+            'paymob.base_url' => 'https://accept.paymob.com',
+            'paymob.iframe_id' => null,
+        ]);
+
+        $client = $this->app->make(PaymobClient::class);
+
+        $this->assertSame(
+            'https://accept.paymob.com/api/acceptance/iframes/789?payment_token=fake-payment-token',
+            $client->paymentRedirectUrl('fake-payment-token', 789),
+        );
     }
 }
