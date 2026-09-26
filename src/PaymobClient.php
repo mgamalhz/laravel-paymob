@@ -3,6 +3,9 @@
 namespace Paymob\Laravel;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +17,10 @@ use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
+use Paymob\Laravel\Exceptions\PaymobAuthenticationException;
+use Paymob\Laravel\Exceptions\PaymobDomainException;
 use Paymob\Laravel\Models\PaymobWebhookEvent;
+use Throwable;
 
 class PaymobClient implements PaymobClientContract
 {
@@ -103,47 +109,97 @@ class PaymobClient implements PaymobClientContract
      */
     public function authenticate(): AuthenticationResponseDto
     {
-        $response = $this->http()
-            ->post('/api/auth/tokens', [
-                'api_key' => $this->getApiKey(),
-            ]);
+        if ($cached = $this->cachedAuthentication()) {
+            return $cached;
+        }
 
-        $response->throw();
+        $refreshStarted = false;
+
+        try {
+            return $this->cache()->lock(
+                $this->tokenCacheKey() . ':lock',
+                max(1, (int) $this->config('token_cache.lock_seconds', 10)),
+            )->block(
+                max(1, (int) $this->config('token_cache.lock_wait_seconds', 5)),
+                function () use (&$refreshStarted): AuthenticationResponseDto {
+                    if ($cached = $this->cachedAuthentication()) {
+                        return $cached;
+                    }
+
+                    $refreshStarted = true;
+
+                    return $this->requestAuthentication();
+                },
+            );
+        } catch (Throwable $exception) {
+            if ($refreshStarted) {
+                throw $exception;
+            }
+
+            // A cache outage must not make Paymob unavailable. Lock timeouts are
+            // also safe to recover from by making one uncached authentication call.
+            return $this->requestAuthentication();
+        }
+    }
+
+    private function requestAuthentication(): AuthenticationResponseDto
+    {
+        try {
+            $response = $this->http()
+                ->post('/api/auth/tokens', [
+                    'api_key' => $this->getApiKey(),
+                ]);
+
+            $response->throw();
+        } catch (RequestException $exception) {
+            throw new PaymobAuthenticationException(
+                $this->requestFailureMessage('Paymob authentication', $exception),
+                $exception->response->status(),
+                $exception,
+            );
+        } catch (ConnectionException $exception) {
+            throw new PaymobAuthenticationException(
+                'Could not connect to Paymob authentication service after ' . $this->retryAttempts() . ' attempts.',
+                previous: $exception,
+            );
+        }
 
         $response = $response->json();
         $authDto = new AuthenticationResponseDto(
             $response['token'],
         );
-        Cache::put('paymob_token', $authDto->token, now()->addMinutes(58));
+
+        try {
+            $this->cache()->put(
+                $this->tokenCacheKey(),
+                $authDto,
+                now()->addSeconds(max(1, (int) $this->config('token_cache.ttl_seconds', 58 * 60))),
+            );
+        } catch (Throwable) {
+            // Authentication succeeded, so callers should not fail because cache is unavailable.
+        }
 
         return $authDto;
     }
 
     public function registerOrder(RegisterOrderData $data): OrderResponseDto
     {
-        $payload = array_merge([
-            'auth_token' => $this->getToken(),
-            'delivery_needed' => false,
-            'amount_cents' => $data->amount,
-            'currency' => $data->currency,
-            'items' => array_map(
-                fn ($item) => $item->toArray(),
-                $data->items
-            ),
-        ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : []);
+        $retryOrderCreation = $data->specialReference !== null;
 
-        Log::debug('Paymob register order request', [
-            'url' => rtrim($this->baseUrl(), '/') . '/api/ecommerce/orders',
-            'payload' => $this->maskSensitivePayload($payload),
-        ]);
-
-        $response = $this->http()
-            ->post('/api/ecommerce/orders', $payload);
-
-        Log::debug('Paymob register order response', [
-            'status' => $response->status(),
-            'body' => $response->body(),
-        ]);
+        $response = $this->authenticatedRequest(
+            fn (string $token): Response => $this->http($retryOrderCreation)
+            ->post('/api/ecommerce/orders', array_merge([
+                'auth_token' => $token,
+                'delivery_needed' => false,
+                'amount_cents' => $data->amount,
+                'currency' => $data->currency,
+                'items' => array_map(
+                    fn ($item) => $item->toArray(),
+                    $data->items
+                ),
+            ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : [])),
+            $this->retryAttempts($retryOrderCreation),
+        );
 
         $response->throw();
 
@@ -157,23 +213,13 @@ class PaymobClient implements PaymobClientContract
 
     public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto
     {
-        $payload = array_merge(
-            ['auth_token' => $this->getToken()],
-            $data->toArray(),
+        $response = $this->authenticatedRequest(
+            fn (string $token): Response => $this->http()
+            ->post('/api/acceptance/payment_keys', array_merge(
+                ['auth_token' => $token],
+                $data->toArray(),
+            )),
         );
-
-        Log::debug('Paymob payment key request', [
-            'url' => rtrim($this->baseUrl(), '/') . '/api/acceptance/payment_keys',
-            'payload' => $this->maskSensitivePayload($payload),
-        ]);
-
-        $response = $this->http()
-            ->post('/api/acceptance/payment_keys', $payload);
-
-        Log::debug('Paymob payment key response', [
-            'status' => $response->status(),
-            'body' => $response->body(),
-        ]);
 
         $response->throw();
 
@@ -229,7 +275,7 @@ class PaymobClient implements PaymobClientContract
 
     public function config(string $key, mixed $default = null): mixed
     {
-        return $this->config[$key] ?? $default;
+        return data_get($this->config, $key, $default);
     }
 
     public function configs(): array
@@ -239,16 +285,117 @@ class PaymobClient implements PaymobClientContract
 
 
 
-    private function http()
+    private function http(bool $allowRetry = true)
     {
         return Http::baseUrl($this->baseUrl())
             ->accept('application/json')
             ->asJson()
             ->timeout($this->timeout())
             ->connectTimeout($this->connectTimeout())
-            ->retry(3, 100, throw: false);
+            ->retry(
+                $this->retryAttempts($allowRetry),
+                fn (int $attempt, Throwable $exception): int => $this->retryDelay($attempt, $exception),
+                fn (Throwable $exception): bool => $this->shouldRetry($exception),
+                false,
+            );
     }
 
+    private function retryAttempts(bool $allowRetry = true): int
+    {
+        if (! $allowRetry) {
+            return 1;
+        }
+
+        return max(1, (int) $this->config('retry_limit', 5));
+    }
+
+    private function retryDelay(int $attempt, Throwable $exception): int
+    {
+        $delay = null;
+
+        if ($exception instanceof RequestException) {
+            $retryAfter = $exception->response->header('Retry-After');
+
+            if (is_numeric($retryAfter)) {
+                $delay = min(max(0, (int) $retryAfter) * 1000, $this->retryMaxDelay());
+            }
+        }
+
+        $delay ??= min($this->exponentialBackoffDelay($attempt) + $this->retryJitter(), $this->retryMaxDelay());
+
+        $this->logRetryAttempt($attempt, $delay, $exception);
+
+        return $delay;
+    }
+
+    private function exponentialBackoffDelay(int $attempt): int
+    {
+        $attempt = max(1, $attempt);
+
+        return $this->retryBaseDelay() * (2 ** ($attempt - 1));
+    }
+
+    private function retryBaseDelay(): int
+    {
+        return max(0, (int) $this->config('retry_base_delay_ms', 500));
+    }
+
+    private function retryMaxDelay(): int
+    {
+        return max($this->retryBaseDelay(), (int) $this->config('retry_max_delay_ms', 10000));
+    }
+
+    private function retryJitter(): int
+    {
+        $jitter = max(0, (int) $this->config('retry_jitter_ms', 250));
+
+        return $jitter > 0 ? random_int(0, $jitter) : 0;
+    }
+
+    private function shouldRetry(Throwable $exception): bool
+    {
+        if ($exception instanceof ConnectionException) {
+            return true;
+        }
+
+        if ($exception instanceof RequestException) {
+            $status = $exception->response->status();
+
+            return $status === 429 || $exception->response->serverError();
+        }
+
+        return false;
+    }
+
+    private function logRetryAttempt(int $attempt, int $delay, Throwable $exception): void
+    {
+        Log::warning('Retrying Paymob request.', [
+            'attempt' => $attempt,
+            'max_attempts' => $this->retryAttempts(),
+            'delay_ms' => $delay,
+            'status' => $exception instanceof RequestException ? $exception->response->status() : null,
+            'endpoint' => $exception instanceof RequestException ? $this->responseEndpoint($exception->response) : null,
+            'exception' => $exception::class,
+        ]);
+    }
+
+    private function responseEndpoint(Response $response): ?string
+    {
+        $uri = $response->effectiveUri();
+
+        if ($uri === null) {
+            return null;
+        }
+
+        return parse_url((string) $uri, PHP_URL_PATH) ?: null;
+    }
+
+    private function cache(): CacheRepository
+    {
+        $store = $this->config('token_cache.store');
+
+        return Cache::store(is_string($store) && $store !== '' ? $store : null);
+    }
 
     private function getToken(): string {
         $cachedToken = Cache::get('paymob_token');
@@ -278,14 +425,88 @@ class PaymobClient implements PaymobClientContract
 
         return $payload;
     }
+    private function tokenCacheKey(): string
+    {
+        $scope = implode('|', [
+            strtolower(rtrim($this->baseUrl(), '/')),
+            (string) $this->config('token_cache.environment', config('app.env', 'production')),
+            hash('sha256', $this->getApiKey()),
+        ]);
+
+        return (string) $this->config('token_cache.prefix', 'paymob:auth-token')
+            . ':' . hash('sha256', $scope);
+    }
+
+    private function cachedAuthentication(): ?AuthenticationResponseDto
+    {
+        try {
+            $cached = $this->cache()->get($this->tokenCacheKey());
+
+            return $cached instanceof AuthenticationResponseDto ? $cached : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function forgetCachedAuthentication(): void
+    {
+        try {
+            $this->cache()->forget($this->tokenCacheKey());
+        } catch (Throwable) {
+            // Authentication can still be refreshed without cache access.
+        }
+    }
+
+    private function authenticatedRequest(callable $request, ?int $attempts = null): Response
+    {
+        $attempts ??= $this->retryAttempts();
+
+        try {
+            $response = $request($this->authenticate()->token);
+
+            if (in_array($response->status(), [401, 403], true)) {
+                $this->forgetCachedAuthentication();
+                $response = $request($this->requestAuthentication()->token);
+            }
+
+            $response->throw();
+
+            return $response;
+        } catch (RequestException $exception) {
+            throw new PaymobDomainException(
+                $this->requestFailureMessage('Paymob request', $exception, $attempts),
+                $exception->response->status(),
+                $exception,
+            );
+        } catch (ConnectionException $exception) {
+            throw new PaymobDomainException(
+                'Could not connect to Paymob after ' . $attempts . ' attempts.',
+                previous: $exception,
+            );
+        }
+    }
+
+    private function requestFailureMessage(string $operation, RequestException $exception, ?int $attempts = null): string
+    {
+        $attempts ??= $this->retryAttempts();
+        $status = $exception->response->status();
+
+        if ($this->shouldRetry($exception)) {
+            return $operation . ' failed after ' . $attempts . ' attempts with HTTP status ' . $status . '.';
+        }
+
+        return $operation . ' failed with HTTP status ' . $status . '.';
+    }
 
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
     {
-        $response = $this->http()
-            ->post('/api/acceptance/capture?token=' . rawurlencode($this->getToken()), [
+        $response = $this->authenticatedRequest(
+            fn (string $token): Response => $this->http()
+            ->withQueryParameters(['token' => $token])
+            ->post('/api/acceptance/capture', [
                 'transaction_id' => $transactionId,
                 'amount_cents' => $amountCents,
-            ]);
+            ]));
 
         $response->throw();
 
