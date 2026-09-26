@@ -8,6 +8,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
@@ -16,8 +17,9 @@ use Paymob\Laravel\DTO\OrderResponseDto;
 use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
+use Paymob\Laravel\Exceptions\PaymobAuthenticationException;
+use Paymob\Laravel\Exceptions\PaymobDomainException;
 use Paymob\Laravel\Models\PaymobWebhookEvent;
-use RuntimeException;
 use Throwable;
 
 class PaymobClient implements PaymobClientContract
@@ -150,26 +152,42 @@ class PaymobClient implements PaymobClientContract
 
             $response->throw();
         } catch (RequestException $exception) {
-            throw new RuntimeException(
-                'Paymob authentication failed with HTTP status ' . $exception->response->status() . '.',
+            throw new PaymobAuthenticationException(
+                $this->requestFailureMessage('Paymob authentication', $exception),
+                $exception->response->status(),
+                $exception,
             );
-        } catch (ConnectionException) {
-            throw new RuntimeException('Could not connect to Paymob authentication service.');
+        } catch (ConnectionException $exception) {
+            throw new PaymobAuthenticationException(
+                'Could not connect to Paymob authentication service after ' . $this->retryAttempts() . ' attempts.',
+                previous: $exception,
+            );
         }
 
         $response = $response->json();
         $authDto = new AuthenticationResponseDto(
             $response['token'],
         );
-        Cache::put('paymob_token', $authDto, now()->addMinutes(58));
+
+        try {
+            $this->cache()->put(
+                $this->tokenCacheKey(),
+                $authDto,
+                now()->addSeconds(max(1, (int) $this->config('token_cache.ttl_seconds', 58 * 60))),
+            );
+        } catch (Throwable) {
+            // Authentication succeeded, so callers should not fail because cache is unavailable.
+        }
 
         return $authDto;
     }
 
     public function registerOrder(RegisterOrderData $data): OrderResponseDto
     {
+        $retryOrderCreation = $data->specialReference !== null;
+
         $response = $this->authenticatedRequest(
-            fn (string $token): Response => $this->http()
+            fn (string $token): Response => $this->http($retryOrderCreation)
             ->post('/api/ecommerce/orders', array_merge([
                 'auth_token' => $token,
                 'delivery_needed' => false,
@@ -180,6 +198,7 @@ class PaymobClient implements PaymobClientContract
                     $data->items
                 ),
             ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : [])),
+            $this->retryAttempts($retryOrderCreation),
         );
 
         $response->throw();
@@ -266,7 +285,7 @@ class PaymobClient implements PaymobClientContract
 
 
 
-    private function http()
+    private function http(bool $allowRetry = true)
     {
         return Http::baseUrl($this->baseUrl())
             ->accept('application/json')
@@ -274,11 +293,101 @@ class PaymobClient implements PaymobClientContract
             ->timeout($this->timeout())
             ->connectTimeout($this->connectTimeout())
             ->retry(
-                3,
-                100,
-                fn (Throwable $exception): bool => $exception instanceof ConnectionException,
+                $this->retryAttempts($allowRetry),
+                fn (int $attempt, Throwable $exception): int => $this->retryDelay($attempt, $exception),
+                fn (Throwable $exception): bool => $this->shouldRetry($exception),
                 false,
             );
+    }
+
+    private function retryAttempts(bool $allowRetry = true): int
+    {
+        if (! $allowRetry) {
+            return 1;
+        }
+
+        return max(1, (int) $this->config('retry_limit', 5));
+    }
+
+    private function retryDelay(int $attempt, Throwable $exception): int
+    {
+        $delay = null;
+
+        if ($exception instanceof RequestException) {
+            $retryAfter = $exception->response->header('Retry-After');
+
+            if (is_numeric($retryAfter)) {
+                $delay = min(max(0, (int) $retryAfter) * 1000, $this->retryMaxDelay());
+            }
+        }
+
+        $delay ??= min($this->exponentialBackoffDelay($attempt) + $this->retryJitter(), $this->retryMaxDelay());
+
+        $this->logRetryAttempt($attempt, $delay, $exception);
+
+        return $delay;
+    }
+
+    private function exponentialBackoffDelay(int $attempt): int
+    {
+        $attempt = max(1, $attempt);
+
+        return $this->retryBaseDelay() * (2 ** ($attempt - 1));
+    }
+
+    private function retryBaseDelay(): int
+    {
+        return max(0, (int) $this->config('retry_base_delay_ms', 500));
+    }
+
+    private function retryMaxDelay(): int
+    {
+        return max($this->retryBaseDelay(), (int) $this->config('retry_max_delay_ms', 10000));
+    }
+
+    private function retryJitter(): int
+    {
+        $jitter = max(0, (int) $this->config('retry_jitter_ms', 250));
+
+        return $jitter > 0 ? random_int(0, $jitter) : 0;
+    }
+
+    private function shouldRetry(Throwable $exception): bool
+    {
+        if ($exception instanceof ConnectionException) {
+            return true;
+        }
+
+        if ($exception instanceof RequestException) {
+            $status = $exception->response->status();
+
+            return $status === 429 || $exception->response->serverError();
+        }
+
+        return false;
+    }
+
+    private function logRetryAttempt(int $attempt, int $delay, Throwable $exception): void
+    {
+        Log::warning('Retrying Paymob request.', [
+            'attempt' => $attempt,
+            'max_attempts' => $this->retryAttempts(),
+            'delay_ms' => $delay,
+            'status' => $exception instanceof RequestException ? $exception->response->status() : null,
+            'endpoint' => $exception instanceof RequestException ? $this->responseEndpoint($exception->response) : null,
+            'exception' => $exception::class,
+        ]);
+    }
+
+    private function responseEndpoint(Response $response): ?string
+    {
+        $uri = $response->effectiveUri();
+
+        if ($uri === null) {
+            return null;
+        }
+
+        return parse_url((string) $uri, PHP_URL_PATH) ?: null;
     }
 
     private function cache(): CacheRepository
@@ -348,8 +457,10 @@ class PaymobClient implements PaymobClientContract
         }
     }
 
-    private function authenticatedRequest(callable $request): Response
+    private function authenticatedRequest(callable $request, ?int $attempts = null): Response
     {
+        $attempts ??= $this->retryAttempts();
+
         try {
             $response = $request($this->authenticate()->token);
 
@@ -362,12 +473,29 @@ class PaymobClient implements PaymobClientContract
 
             return $response;
         } catch (RequestException $exception) {
-            throw new RuntimeException(
-                'Paymob request failed with HTTP status ' . $exception->response->status() . '.',
+            throw new PaymobDomainException(
+                $this->requestFailureMessage('Paymob request', $exception, $attempts),
+                $exception->response->status(),
+                $exception,
             );
-        } catch (ConnectionException) {
-            throw new RuntimeException('Could not connect to Paymob.');
+        } catch (ConnectionException $exception) {
+            throw new PaymobDomainException(
+                'Could not connect to Paymob after ' . $attempts . ' attempts.',
+                previous: $exception,
+            );
         }
+    }
+
+    private function requestFailureMessage(string $operation, RequestException $exception, ?int $attempts = null): string
+    {
+        $attempts ??= $this->retryAttempts();
+        $status = $exception->response->status();
+
+        if ($this->shouldRetry($exception)) {
+            return $operation . ' failed after ' . $attempts . ' attempts with HTTP status ' . $status . '.';
+        }
+
+        return $operation . ' failed with HTTP status ' . $status . '.';
     }
 
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto

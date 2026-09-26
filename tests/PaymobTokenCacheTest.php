@@ -11,6 +11,8 @@ use Mockery;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
 use Paymob\Laravel\DTO\BillingDataDto;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
+use Paymob\Laravel\Exceptions\PaymobAuthenticationException;
+use Paymob\Laravel\Exceptions\PaymobDomainException;
 use Paymob\Laravel\PaymobClient;
 use RuntimeException;
 
@@ -114,7 +116,9 @@ class PaymobTokenCacheTest extends TestCase
             $client->authenticate();
             $this->fail('Expected authentication to fail.');
         } catch (RuntimeException $exception) {
-            $this->assertSame('Paymob authentication failed with HTTP status 500.', $exception->getMessage());
+            $this->assertInstanceOf(PaymobAuthenticationException::class, $exception);
+            $this->assertSame('Paymob authentication failed after 5 attempts with HTTP status 500.', $exception->getMessage());
+            $this->assertSame(500, $exception->status());
             $this->assertStringNotContainsString('must-never-appear', $exception->getMessage());
         }
     }
@@ -179,7 +183,9 @@ class PaymobTokenCacheTest extends TestCase
             $client->requestPaymentKey($this->paymentKeyData());
             $this->fail('Expected the request to fail.');
         } catch (RuntimeException $exception) {
+            $this->assertInstanceOf(PaymobDomainException::class, $exception);
             $this->assertSame('Paymob request failed with HTTP status 401.', $exception->getMessage());
+            $this->assertSame(401, $exception->status());
             $this->assertStringNotContainsString('secret-', $exception->getMessage());
         }
 
