@@ -65,10 +65,12 @@ class ProcessPaymobPayment implements ShouldQueue
 
                 $this->reservePayment();
 
-                $response = $paymob->capture($this->transactionId, $this->amountCents);
+                DB::afterCommit(function () use ($paymob): void {
+                    $response = $paymob->capture($this->transactionId, $this->amountCents);
 
-                $this->markCaptured($response);
-                $this->markPaymentCaptured($response);
+                    $this->markCaptured($response);
+                    $this->markPaymentCaptured($response);
+                });
             });
         } catch (QueryException $exception) {
             if (! $this->isUniqueConstraintViolation($exception)) {
