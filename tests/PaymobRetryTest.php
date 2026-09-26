@@ -103,7 +103,9 @@ class PaymobRetryTest extends TestCase
 
         $client = new PaymobClient(config('paymob'));
         $method = new ReflectionMethod($client, 'retryDelay');
-        $exception = Http::failedRequest(['message' => 'rate limited'], 429, ['Retry-After' => '3']);
+        $exception = (new \Illuminate\Http\Client\Response(
+            new \GuzzleHttp\Psr7\Response(429, ['Retry-After' => '3'], '{"message":"rate limited"}'),
+        ))->toException();
 
         $this->assertSame(3000, $method->invoke($client, 1, $exception));
     }
