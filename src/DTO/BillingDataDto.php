@@ -5,22 +5,22 @@ namespace Paymob\Laravel\DTO;
 use Paymob\Laravel\Contracts\ObjectEntriesTransformerInterface;
 use Paymob\Laravel\Traits\ObjectEntriesTransformerTrait;
 
-final readonly class BillingDataDto implements ObjectEntriesTransformerInterface
+final class BillingDataDto implements ObjectEntriesTransformerInterface
 {
     use ObjectEntriesTransformerTrait;
     public function __construct(
-        public string $firstName,
-        public string $lastName,
-        public string $email,
-        public string $phoneNumber,
-        public string $street,
-        public string $building,
-        public string $city,
-        public string $country,
-        public ?string $state = null,
-        public ?string $apartment = null,
-        public ?string $floor = null,
-        public ?string $postalCode = null,
+        public readonly string $firstName,
+        public readonly string $lastName,
+        public readonly string $email,
+        public readonly string $phoneNumber,
+        public readonly string $street,
+        public readonly string $building,
+        public readonly string $city,
+        public readonly string $country,
+        public readonly ?string $state = null,
+        public readonly ?string $apartment = null,
+        public readonly ?string $floor = null,
+        public readonly ?string $postalCode = null,
     ) {
     }
 
