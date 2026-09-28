@@ -16,8 +16,7 @@ final class OrderItemDto implements ObjectEntriesTransformerInterface
         public readonly int $amount,
         public readonly int $quantity = 1,
         public readonly ?string $description = null,
-    ) {
-    }
+    ) {}
 
     public function toArray(): array
     {

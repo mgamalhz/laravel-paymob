@@ -8,6 +8,7 @@ use Paymob\Laravel\Traits\ObjectEntriesTransformerTrait;
 final class BillingDataDto implements ObjectEntriesTransformerInterface
 {
     use ObjectEntriesTransformerTrait;
+
     public function __construct(
         public readonly string $firstName,
         public readonly string $lastName,
@@ -21,9 +22,6 @@ final class BillingDataDto implements ObjectEntriesTransformerInterface
         public readonly ?string $apartment = null,
         public readonly ?string $floor = null,
         public readonly ?string $postalCode = null,
-    ) {
-    }
-
-
+    ) {}
 
 }

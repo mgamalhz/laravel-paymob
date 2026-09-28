@@ -3,6 +3,7 @@
 namespace Paymob\Laravel\Tests;
 
 use Illuminate\Contracts\Queue\Job;
+use Paymob\Laravel\Jobs\ProcessPaymobPayment;
 
 class FakeQueueJob implements Job
 {
@@ -25,9 +26,7 @@ class FakeQueueJob implements Job
         return [];
     }
 
-    public function fire()
-    {
-    }
+    public function fire() {}
 
     public function release($delay = 0)
     {
@@ -40,9 +39,7 @@ class FakeQueueJob implements Job
         return $this->released;
     }
 
-    public function delete()
-    {
-    }
+    public function delete() {}
 
     public function isDeleted()
     {
@@ -64,13 +61,9 @@ class FakeQueueJob implements Job
         return false;
     }
 
-    public function markAsFailed()
-    {
-    }
+    public function markAsFailed() {}
 
-    public function fail($e = null)
-    {
-    }
+    public function fail($e = null) {}
 
     public function maxTries()
     {
@@ -94,17 +87,17 @@ class FakeQueueJob implements Job
 
     public function getName()
     {
-        return \Paymob\Laravel\Jobs\ProcessPaymobPayment::class;
+        return ProcessPaymobPayment::class;
     }
 
     public function resolveName()
     {
-        return \Paymob\Laravel\Jobs\ProcessPaymobPayment::class;
+        return ProcessPaymobPayment::class;
     }
 
     public function resolveQueuedJobClass()
     {
-        return \Paymob\Laravel\Jobs\ProcessPaymobPayment::class;
+        return ProcessPaymobPayment::class;
     }
 
     public function getConnectionName()

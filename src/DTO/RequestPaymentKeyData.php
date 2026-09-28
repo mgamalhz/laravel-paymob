@@ -15,6 +15,5 @@ final class RequestPaymentKeyData implements ObjectEntriesTransformerInterface
         public readonly int $orderId,
         public readonly int $integrationId,
         public readonly BillingDataDto $billingData,
-    ) {
-    }
+    ) {}
 }

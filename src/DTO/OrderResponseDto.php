@@ -12,6 +12,5 @@ final class OrderResponseDto implements ObjectEntriesTransformerInterface
     public function __construct(
         public readonly int $id,
         public readonly ?string $createdAt = null,
-    ) {
-    }
+    ) {}
 }

@@ -2,6 +2,4 @@
 
 namespace Paymob\Laravel\Exceptions;
 
-class PaymobAuthenticationException extends PaymobDomainException
-{
-}
+class PaymobAuthenticationException extends PaymobDomainException {}

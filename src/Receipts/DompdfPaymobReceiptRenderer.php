@@ -8,9 +8,7 @@ use Paymob\Laravel\Models\Payment;
 
 class DompdfPaymobReceiptRenderer implements PaymobReceiptRenderer
 {
-    public function __construct(private PDF $pdf)
-    {
-    }
+    public function __construct(private PDF $pdf) {}
 
     public function render(Payment $payment): string
     {

@@ -41,6 +41,7 @@ jobs:
 
       - name: Select Laravel and Testbench versions
         run: |
+          composer remove larastan/larastan laravel/pint --dev --no-interaction --no-update
           composer require "illuminate/support:${{ matrix.laravel_constraint }}" --no-interaction --no-update
           composer require "orchestra/testbench:${{ matrix.testbench }}" --dev --no-interaction --no-update
 
