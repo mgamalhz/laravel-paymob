@@ -3,9 +3,7 @@
 namespace Paymob\Laravel\Tests;
 
 use Paymob\Laravel\Contracts\PaymobClientContract;
-use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\PaymobClient;
-use ReflectionMethod;
 
 class PackageBootTest extends TestCase
 {

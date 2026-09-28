@@ -22,7 +22,7 @@ class PaymobLoggingTest extends TestCase
     {
         parent::setUp();
 
-        $this->logPath = __DIR__ . '/logs/paymob-structured.log';
+        $this->logPath = __DIR__.'/logs/paymob-structured.log';
         @unlink($this->logPath);
 
         $this->app['config']->set('logging.channels.paymob-structured-test', [
@@ -48,7 +48,7 @@ class PaymobLoggingTest extends TestCase
         Cache::put('paymob_token', new AuthenticationResponseDto('auth_token_sensitive_value'));
 
         Http::fake([
-            $baseUrl . '/api/acceptance/payment_keys' => Http::response([
+            $baseUrl.'/api/acceptance/payment_keys' => Http::response([
                 'token' => 'payment_key_sensitive_value',
             ], 200),
         ]);
@@ -103,10 +103,10 @@ class PaymobLoggingTest extends TestCase
         Cache::clear();
 
         Http::fake([
-            $baseUrl . '/api/auth/tokens' => Http::response([
+            $baseUrl.'/api/auth/tokens' => Http::response([
                 'token' => 'auth_token_sensitive_value',
             ], 200),
-            $baseUrl . '/api/ecommerce/orders' => Http::response([
+            $baseUrl.'/api/ecommerce/orders' => Http::response([
                 'id' => 987654321,
                 'created_at' => '2026-05-24T14:32:11Z',
             ], 201),
@@ -166,7 +166,7 @@ class PaymobLoggingTest extends TestCase
 
     private function logs(): string
     {
-        Log::channel('paymob-structured-test')->getLogger()->close();
+        Log::forgetChannel('paymob-structured-test');
 
         return file_exists($this->logPath) ? (string) file_get_contents($this->logPath) : '';
     }
@@ -183,26 +183,26 @@ class PaymobLoggingTest extends TestCase
     private function hmacFor(array $object): string
     {
         $concatenated = ''
-            . $object['amount_cents']
-            . $object['created_at']
-            . $object['currency']
-            . $this->bool($object['error_occured'])
-            . $this->bool($object['has_parent_transaction'])
-            . $object['id']
-            . $object['integration_id']
-            . $this->bool($object['is_3d_secure'])
-            . $this->bool($object['is_auth'])
-            . $this->bool($object['is_capture'])
-            . $this->bool($object['is_refunded'])
-            . $this->bool($object['is_standalone_payment'])
-            . $this->bool($object['is_voided'])
-            . $object['order']['id']
-            . $object['owner']
-            . $this->bool($object['pending'])
-            . $object['source_data']['pan']
-            . $object['source_data']['sub_type']
-            . $object['source_data']['type']
-            . $this->bool($object['success']);
+            .$object['amount_cents']
+            .$object['created_at']
+            .$object['currency']
+            .$this->bool($object['error_occured'])
+            .$this->bool($object['has_parent_transaction'])
+            .$object['id']
+            .$object['integration_id']
+            .$this->bool($object['is_3d_secure'])
+            .$this->bool($object['is_auth'])
+            .$this->bool($object['is_capture'])
+            .$this->bool($object['is_refunded'])
+            .$this->bool($object['is_standalone_payment'])
+            .$this->bool($object['is_voided'])
+            .$object['order']['id']
+            .$object['owner']
+            .$this->bool($object['pending'])
+            .$object['source_data']['pan']
+            .$object['source_data']['sub_type']
+            .$object['source_data']['type']
+            .$this->bool($object['success']);
 
         return hash_hmac('sha512', $concatenated, config('paymob.hmac_secret'));
     }

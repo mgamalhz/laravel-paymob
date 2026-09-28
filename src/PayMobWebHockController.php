@@ -20,7 +20,7 @@ class PayMobWebHockController extends Controller
             'obj.id' => ['required', 'integer'],
             'obj.amount_cents' => ['required', 'integer'],
             'obj.order.id' => ['required', 'integer'],
-            "obj.success" => ['required', 'boolean'],
+            'obj.success' => ['required', 'boolean'],
         ]);
 
         PaymobLogger::info(PaymobLogEvents::WEBHOOK_RECEIVED, $this->logContext($request, $payload));

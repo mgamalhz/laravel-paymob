@@ -2,8 +2,17 @@
 
 namespace Paymob\Laravel\Concerns;
 
+use Illuminate\Database\Eloquent\Model;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
 
+/**
+ * @property bool|null $paymob_captured
+ * @property bool|null $captured
+ * @property string|null $payment_status
+ * @property mixed $captured_at
+ *
+ * @phpstan-require-extends Model
+ */
 trait HasPaymobCapture
 {
     public function isPaymobCaptured(): bool
@@ -29,8 +38,6 @@ trait HasPaymobCapture
         $this->payment_status = 'captured';
         $this->captured_at ??= now();
 
-        if (method_exists($this, 'save')) {
-            $this->save();
-        }
+        $this->save();
     }
 }

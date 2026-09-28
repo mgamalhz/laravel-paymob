@@ -2,9 +2,14 @@
 
 namespace Paymob\Laravel\Models;
 
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $transaction_id
+ * @property string|null $order_type
+ * @property string|null $order_id
+ */
 class Payment extends Model
 {
     protected $fillable = [

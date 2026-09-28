@@ -2,6 +2,7 @@
 
 namespace Paymob\Laravel\Tests;
 
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -101,7 +102,9 @@ class PaymobRetryTest extends TestCase
 
         $client = new PaymobClient(config('paymob'));
         $method = new ReflectionMethod($client, 'retryDelay');
-        $exception = Http::failedRequest(['message' => 'rate limited'], 429, ['Retry-After' => '3']);
+        $exception = (new \Illuminate\Http\Client\Response(
+            new Response(429, ['Retry-After' => '3'], '{"message":"rate limited"}'),
+        ))->toException();
 
         $this->assertSame(3000, $method->invoke($client, 1, $exception));
     }
