@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Route;
 use Paymob\Laravel\PayMobWebHockController;
 
 $paymobWebhookUrl = config('paymob.paymob_webhook_url');

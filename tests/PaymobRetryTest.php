@@ -27,6 +27,7 @@ class PaymobRetryTest extends TestCase
             'paymob.base_url' => 'https://accept.paymob.test',
             'paymob.api_key' => 'test-api-key',
             'paymob.retry_limit' => 3,
+            'paymob.logging.enabled' => false,
             'cache.default' => 'array',
         ]);
 
