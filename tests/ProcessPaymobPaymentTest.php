@@ -38,7 +38,10 @@ class ProcessPaymobPaymentTest extends TestCase
 
         $this->app->instance(PaymobClientContract::class, $client);
 
-        $job = (new ProcessPaymobPayment($order, 987654, 1000))->withFakeQueueInteractions();
+        $job = new ProcessPaymobPayment($order, 987654, 1000);
+        $queueJob = new FakeQueueJob;
+        $job->setJob($queueJob);
+
         $middleware = $job->middleware()[0];
         $lockKey = $middleware->getLockKey($job);
         $lock = Cache::lock($lockKey, 30);
@@ -56,7 +59,8 @@ class ProcessPaymobPaymentTest extends TestCase
             $this->assertFalse($ran);
             $this->assertSame(0, $client->captures);
             $this->assertFalse(FakePaymobOrder::$capturedById[123]);
-            $job->assertReleased(30);
+            $this->assertTrue($queueJob->isReleased());
+            $this->assertSame(30, $queueJob->releaseDelay);
         } finally {
             $lock->release();
         }

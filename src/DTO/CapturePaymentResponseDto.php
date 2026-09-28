@@ -2,12 +2,12 @@
 
 namespace Paymob\Laravel\DTO;
 
-final readonly class CapturePaymentResponseDto
+final class CapturePaymentResponseDto
 {
     /**
      * @param  array<string, mixed>  $payload
      */
     public function __construct(
-        public array $payload,
+        public readonly array $payload,
     ) {}
 }
