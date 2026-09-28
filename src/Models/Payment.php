@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
+ * @property int $transaction_id
  * @property string|null $order_type
  * @property string|null $order_id
  */
@@ -20,6 +21,10 @@ class Payment extends Model
         'status',
         'response_payload',
         'captured_at',
+        'disk',
+        'filename',
+        'key',
+        'stored_at',
     ];
 
     protected $casts = [
@@ -28,6 +33,11 @@ class Payment extends Model
         'response_payload' => 'array',
         'captured_at' => 'datetime',
     ];
+
+    public function receipt()
+    {
+        return $this->hasOne(PaymentReceipt::class);
+    }
 
     public function webhookEvents(): HasMany
     {
