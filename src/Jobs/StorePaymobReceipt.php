@@ -21,11 +21,9 @@ class StorePaymobReceipt implements ShouldQueue
 
     public int $tries = 3;
 
-    public $afterCommit = true;
-
     public function __construct(public int $paymentId)
     {
-
+        $this->afterCommit();
     }
 
     public function handle(PaymobReceiptRenderer $renderer): void

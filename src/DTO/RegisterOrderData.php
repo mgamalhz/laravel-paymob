@@ -5,7 +5,7 @@ namespace Paymob\Laravel\DTO;
 use Paymob\Laravel\Contracts\ObjectEntriesTransformerInterface;
 use Paymob\Laravel\Traits\ObjectEntriesTransformerTrait;
 
-final readonly class RegisterOrderData implements ObjectEntriesTransformerInterface
+final class RegisterOrderData implements ObjectEntriesTransformerInterface
 {
     use ObjectEntriesTransformerTrait {
         toArray as transformerToArray;
@@ -16,15 +16,15 @@ final readonly class RegisterOrderData implements ObjectEntriesTransformerInterf
      * @param list<OrderItemDto> $items
      */
     public function __construct(
-        public int $amount,
-        public string $currency,
-        public array $paymentMethodIds,
-        public array $items,
-        public BillingDataDto $billingData,
-        public ?CustomerDto $customer = null,
-        public ?string $specialReference = null,
-        public ?string $notificationUrl = null,
-        public ?string $redirectionUrl = null,
+        public readonly int $amount,
+        public readonly string $currency,
+        public readonly array $paymentMethodIds,
+        public readonly array $items,
+        public readonly BillingDataDto $billingData,
+        public readonly ?CustomerDto $customer = null,
+        public readonly ?string $specialReference = null,
+        public readonly ?string $notificationUrl = null,
+        public readonly ?string $redirectionUrl = null,
     ) {
     }
 
