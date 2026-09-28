@@ -2,11 +2,21 @@
 
 namespace Paymob\Laravel\Tests;
 
+use BadMethodCallException;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
+use Paymob\Laravel\Contracts\PaymobCapturable;
 use Paymob\Laravel\Contracts\PaymobClientContract;
+use Paymob\Laravel\DTO\AuthenticationResponseDto;
+use Paymob\Laravel\DTO\CapturePaymentResponseDto;
+use Paymob\Laravel\DTO\OrderResponseDto;
+use Paymob\Laravel\DTO\PaymentKeyResponseDto;
+use Paymob\Laravel\DTO\RegisterOrderData;
+use Paymob\Laravel\DTO\RequestPaymentKeyData;
 use Paymob\Laravel\Jobs\ProcessPaymobPayment;
+use Paymob\Laravel\Jobs\StorePaymobReceipt;
 
 class ProcessPaymobPaymentTest extends TestCase
 {
@@ -15,6 +25,7 @@ class ProcessPaymobPaymentTest extends TestCase
         parent::setUp();
 
         $this->artisan('migrate')->run();
+        Queue::fake([StorePaymobReceipt::class]);
     }
 
     public function test_job_releases_when_overlap_lock_is_held(): void
@@ -117,5 +128,118 @@ class ProcessPaymobPaymentTest extends TestCase
             'amount_cents' => 1000,
         ]);
         $this->assertTrue(FakePaymobOrder::$capturedById[123]);
+        Queue::assertPushed(StorePaymobReceipt::class);
+    }
+}
+
+final class FakePaymobOrder implements PaymobCapturable
+{
+    /**
+     * @var array<int, bool>
+     */
+    public static array $capturedById = [];
+
+    public bool $captured = false;
+
+    public ?string $payment_status = null;
+
+    public ?string $captured_at = null;
+
+    public function __construct(public int $id)
+    {
+        self::$capturedById[$this->id] = false;
+    }
+
+    public function isPaymobCaptured(): bool
+    {
+        return self::$capturedById[$this->id];
+    }
+
+    public function markPaymobCaptured(CapturePaymentResponseDto $response): void
+    {
+        $this->captured = true;
+        $this->payment_status = 'captured';
+        $this->captured_at = 'now';
+        self::$capturedById[$this->id] = true;
+    }
+}
+
+final class FakePaymobCaptureClient implements PaymobClientContract
+{
+    public int $captures = 0;
+
+    public ?int $lastTransactionId = null;
+
+    public ?int $lastAmountCents = null;
+
+    public function authenticate(): AuthenticationResponseDto
+    {
+        throw new BadMethodCallException('Not used in this test.');
+    }
+
+    public function registerOrder(RegisterOrderData $data): OrderResponseDto
+    {
+        throw new BadMethodCallException('Not used in this test.');
+    }
+
+    public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto
+    {
+        throw new BadMethodCallException('Not used in this test.');
+    }
+
+    public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
+    {
+        $this->captures++;
+        $this->lastTransactionId = $transactionId;
+        $this->lastAmountCents = $amountCents;
+
+        return new CapturePaymentResponseDto([
+            'id' => $transactionId,
+            'amount_cents' => $amountCents,
+            'success' => true,
+        ]);
+    }
+}
+
+final class FakeConcurrentPaymobCaptureClient implements PaymobClientContract
+{
+    public int $captures = 0;
+
+    public int $nestedAttempts = 0;
+
+    public function __construct(private FakePaymobOrder $order)
+    {
+    }
+
+    public function authenticate(): AuthenticationResponseDto
+    {
+        throw new BadMethodCallException('Not used in this test.');
+    }
+
+    public function registerOrder(RegisterOrderData $data): OrderResponseDto
+    {
+        throw new BadMethodCallException('Not used in this test.');
+    }
+
+    public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto
+    {
+        throw new BadMethodCallException('Not used in this test.');
+    }
+
+    public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
+    {
+        $this->captures++;
+
+        if ($this->nestedAttempts === 0) {
+            $this->nestedAttempts++;
+
+            (new ProcessPaymobPayment($this->order, $transactionId, $amountCents))->handle($this);
+        }
+
+        return new CapturePaymentResponseDto([
+            'id' => $transactionId,
+            'amount_cents' => $amountCents,
+            'success' => true,
+        ]);
     }
 }
