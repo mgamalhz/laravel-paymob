@@ -2,13 +2,17 @@
 
 namespace Paymob\Laravel;
 
+use Illuminate\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
-use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\AuthenticationResponseDto;
@@ -20,6 +24,8 @@ use Paymob\Laravel\DTO\RequestPaymentKeyData;
 use Paymob\Laravel\Exceptions\PaymobAuthenticationException;
 use Paymob\Laravel\Exceptions\PaymobDomainException;
 use Paymob\Laravel\Models\PaymobWebhookEvent;
+use Paymob\Laravel\Support\PaymobLogEvents;
+use Paymob\Laravel\Support\PaymobLogger;
 use Throwable;
 
 class PaymobClient implements PaymobClientContract
@@ -47,8 +53,15 @@ class PaymobClient implements PaymobClientContract
         'success',
     ];
 
-    public function __construct(protected array $config)
+    protected ?string $correlationId = null;
+
+    public function __construct(protected array $config) {}
+
+    public function withCorrelationId(?string $correlationId): static
     {
+        $this->correlationId = $correlationId;
+
+        return $this;
     }
 
     public static function checkHmac(mixed $input, ?string $hmacSecret = null, ?string $incomingHmac = null): bool
@@ -116,8 +129,8 @@ class PaymobClient implements PaymobClientContract
         $refreshStarted = false;
 
         try {
-            return $this->cache()->lock(
-                $this->tokenCacheKey() . ':lock',
+            return $this->lock(
+                $this->tokenCacheKey().':lock',
                 max(1, (int) $this->config('token_cache.lock_seconds', 10)),
             )->block(
                 max(1, (int) $this->config('token_cache.lock_wait_seconds', 5)),
@@ -145,10 +158,9 @@ class PaymobClient implements PaymobClientContract
     private function requestAuthentication(): AuthenticationResponseDto
     {
         try {
-            $response = $this->http()
-                ->post('/api/auth/tokens', [
-                    'api_key' => $this->getApiKey(),
-                ]);
+            $response = $this->post('authenticate', '/api/auth/tokens', [
+                'api_key' => $this->getApiKey(),
+            ]);
 
             $response->throw();
         } catch (RequestException $exception) {
@@ -159,7 +171,7 @@ class PaymobClient implements PaymobClientContract
             );
         } catch (ConnectionException $exception) {
             throw new PaymobAuthenticationException(
-                'Could not connect to Paymob authentication service after ' . $this->retryAttempts() . ' attempts.',
+                'Could not connect to Paymob authentication service after '.$this->retryAttempts().' attempts.',
                 previous: $exception,
             );
         }
@@ -187,8 +199,7 @@ class PaymobClient implements PaymobClientContract
         $retryOrderCreation = $data->specialReference !== null;
 
         $response = $this->authenticatedRequest(
-            fn (string $token): Response => $this->http($retryOrderCreation)
-            ->post('/api/ecommerce/orders', array_merge([
+            fn (string $token): Response => $this->post('register_order', '/api/ecommerce/orders', array_merge([
                 'auth_token' => $token,
                 'delivery_needed' => false,
                 'amount_cents' => $data->amount,
@@ -197,7 +208,9 @@ class PaymobClient implements PaymobClientContract
                     fn ($item) => $item->toArray(),
                     $data->items
                 ),
-            ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : [])),
+            ], $data->specialReference !== null ? ['merchant_order_id' => $data->specialReference] : []), [
+                'merchant_reference' => $data->specialReference,
+            ], $retryOrderCreation),
             $this->retryAttempts($retryOrderCreation),
         );
 
@@ -214,8 +227,7 @@ class PaymobClient implements PaymobClientContract
     public function requestPaymentKey(RequestPaymentKeyData $data): PaymentKeyResponseDto
     {
         $response = $this->authenticatedRequest(
-            fn (string $token): Response => $this->http()
-            ->post('/api/acceptance/payment_keys', array_merge(
+            fn (string $token): Response => $this->post('request_payment_key', '/api/acceptance/payment_keys', array_merge(
                 ['auth_token' => $token],
                 $data->toArray(),
             )),
@@ -239,8 +251,8 @@ class PaymobClient implements PaymobClientContract
         }
 
         return rtrim($this->baseUrl(), '/')
-            . '/api/acceptance/iframes/' . $iframeId
-            . '?payment_token=' . urlencode($paymentToken);
+            .'/api/acceptance/iframes/'.$iframeId
+            .'?payment_token='.urlencode($paymentToken);
     }
 
     public function getApiKey(): string
@@ -283,11 +295,9 @@ class PaymobClient implements PaymobClientContract
         return $this->config;
     }
 
-
-
-    private function http(bool $allowRetry = true)
+    private function http(bool $allowRetry = true, ?string $correlationId = null): PendingRequest
     {
-        return Http::baseUrl($this->baseUrl())
+        $request = Http::baseUrl($this->baseUrl())
             ->accept('application/json')
             ->asJson()
             ->timeout($this->timeout())
@@ -298,6 +308,14 @@ class PaymobClient implements PaymobClientContract
                 fn (Throwable $exception): bool => $this->shouldRetry($exception),
                 false,
             );
+
+        if ($correlationId !== null && $correlationId !== '') {
+            $request->withHeaders([
+                $this->correlationHeader() => $correlationId,
+            ]);
+        }
+
+        return $request;
     }
 
     private function retryAttempts(bool $allowRetry = true): int
@@ -393,38 +411,26 @@ class PaymobClient implements PaymobClientContract
     private function cache(): CacheRepository
     {
         $store = $this->config('token_cache.store');
+        $cache = Cache::store(is_string($store) && $store !== '' ? $store : null);
 
-        return Cache::store(is_string($store) && $store !== '' ? $store : null);
+        if (! $cache instanceof CacheRepository) {
+            throw new PaymobDomainException('Configured cache repository is not supported.');
+        }
+
+        return $cache;
     }
 
-    private function getToken(): string {
-        $cachedToken = Cache::get('paymob_token');
-
-        if (is_string($cachedToken) && $cachedToken !== '') {
-            return $cachedToken;
-        }
-
-        if ($cachedToken instanceof AuthenticationResponseDto) {
-            return $cachedToken->token;
-        }
-
-        if ($cachedToken !== null) {
-            Cache::forget('paymob_token');
-        }
-
-        return $this->authenticate()->token;
-    }
-
-    private function maskSensitivePayload(array $payload): array
+    private function lock(string $name, int $seconds): Lock
     {
-        foreach (['auth_token', 'token', 'api_key'] as $key) {
-            if (array_key_exists($key, $payload)) {
-                $payload[$key] = '[masked]';
-            }
+        $store = $this->cache()->getStore();
+
+        if (! $store instanceof LockProvider) {
+            throw new PaymobDomainException('Configured cache store does not support locks.');
         }
 
-        return $payload;
+        return $store->lock($name, $seconds);
     }
+
     private function tokenCacheKey(): string
     {
         $scope = implode('|', [
@@ -434,7 +440,7 @@ class PaymobClient implements PaymobClientContract
         ]);
 
         return (string) $this->config('token_cache.prefix', 'paymob:auth-token')
-            . ':' . hash('sha256', $scope);
+            .':'.hash('sha256', $scope);
     }
 
     private function cachedAuthentication(): ?AuthenticationResponseDto
@@ -442,7 +448,13 @@ class PaymobClient implements PaymobClientContract
         try {
             $cached = $this->cache()->get($this->tokenCacheKey());
 
-            return $cached instanceof AuthenticationResponseDto ? $cached : null;
+            if ($cached instanceof AuthenticationResponseDto) {
+                return $cached;
+            }
+
+            $legacyCached = Cache::get('paymob_token');
+
+            return $legacyCached instanceof AuthenticationResponseDto ? $legacyCached : null;
         } catch (Throwable) {
             return null;
         }
@@ -455,6 +467,8 @@ class PaymobClient implements PaymobClientContract
         } catch (Throwable) {
             // Authentication can still be refreshed without cache access.
         }
+
+        Cache::forget('paymob_token');
     }
 
     private function authenticatedRequest(callable $request, ?int $attempts = null): Response
@@ -480,7 +494,7 @@ class PaymobClient implements PaymobClientContract
             );
         } catch (ConnectionException $exception) {
             throw new PaymobDomainException(
-                'Could not connect to Paymob after ' . $attempts . ' attempts.',
+                'Could not connect to Paymob after '.$attempts.' attempts.',
                 previous: $exception,
             );
         }
@@ -492,26 +506,101 @@ class PaymobClient implements PaymobClientContract
         $status = $exception->response->status();
 
         if ($this->shouldRetry($exception)) {
-            return $operation . ' failed after ' . $attempts . ' attempts with HTTP status ' . $status . '.';
+            return $operation.' failed after '.$attempts.' attempts with HTTP status '.$status.'.';
         }
 
-        return $operation . ' failed with HTTP status ' . $status . '.';
+        return $operation.' failed with HTTP status '.$status.'.';
     }
 
     public function capture(int $transactionId, int $amountCents): CapturePaymentResponseDto
     {
         $response = $this->authenticatedRequest(
-            fn (string $token): Response => $this->http()
-            ->withQueryParameters(['token' => $token])
-            ->post('/api/acceptance/capture', [
+            fn (string $token): Response => $this->post('capture', '/api/acceptance/capture?token='.rawurlencode($token), [
                 'transaction_id' => $transactionId,
                 'amount_cents' => $amountCents,
-            ]));
+            ], [
+                'merchant_reference' => (string) $transactionId,
+            ]),
+        );
 
         $response->throw();
 
         return new CapturePaymentResponseDto(
             payload: $response->json(),
         );
+    }
+
+    private function post(string $operation, string $endpoint, array $payload, array $context = [], bool $allowRetry = true): Response
+    {
+        $attempt = 0;
+        $startedAt = microtime(true);
+        $correlationId = $this->correlationId();
+        $baseContext = array_filter(array_merge([
+            'operation' => $operation,
+            'method' => 'POST',
+            'endpoint' => parse_url($endpoint, PHP_URL_PATH) ?: $endpoint,
+            'correlation_id' => $correlationId,
+        ], $context), fn (mixed $value): bool => $value !== null);
+
+        try {
+            $response = $this->http($allowRetry, $correlationId)
+                ->beforeSending(function () use (&$attempt, $baseContext, $payload): void {
+                    $attempt++;
+
+                    if ($attempt > 1) {
+                        PaymobLogger::warning(PaymobLogEvents::RETRY, array_merge($baseContext, [
+                            'attempt' => $attempt,
+                        ]));
+                    }
+
+                    PaymobLogger::debug(PaymobLogEvents::REQUEST, $this->payloadContext(array_merge($baseContext, [
+                        'attempt' => $attempt,
+                    ]), 'request_payload', $payload));
+                })
+                ->post($endpoint, $payload);
+
+            PaymobLogger::info(PaymobLogEvents::RESPONSE, array_merge($baseContext, [
+                'attempt' => max($attempt, 1),
+                'duration_ms' => $this->durationMs($startedAt),
+                'status' => $response->status(),
+            ]));
+
+            return $response;
+        } catch (Throwable $exception) {
+            PaymobLogger::error(PaymobLogEvents::FAILURE, array_merge($baseContext, [
+                'attempt' => max($attempt, 1),
+                'duration_ms' => $this->durationMs($startedAt),
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]));
+
+            throw $exception;
+        }
+    }
+
+    private function payloadContext(array $context, string $key, array $payload): array
+    {
+        if ($this->config('logging.include_payloads', false) !== true) {
+            return $context;
+        }
+
+        return array_merge($context, [
+            $key => $payload,
+        ]);
+    }
+
+    private function correlationId(): string
+    {
+        return $this->correlationId ?: (string) Str::uuid();
+    }
+
+    private function correlationHeader(): string
+    {
+        return (string) $this->config('logging.correlation_header', 'X-Correlation-ID');
+    }
+
+    private function durationMs(float $startedAt): int
+    {
+        return (int) round((microtime(true) - $startedAt) * 1000);
     }
 }

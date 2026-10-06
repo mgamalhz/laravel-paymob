@@ -1,10 +1,9 @@
 <?php
 
-
 return [
     'api_key' => env('PAYMOB_API_KEY'),
 
-    "integration_id" => env('PAYMOB_INTEGRATION_ID'),
+    'integration_id' => env('PAYMOB_INTEGRATION_ID'),
 
     'iframe_id' => env('PAYMOB_IFRAME_ID'),
 
@@ -18,7 +17,18 @@ return [
 
     'paymob_webhook_url' => env('PAYMOB_WEBHOOK_URL', '/'),
 
+    'receipts' => [
+        'disk' => env('PAYMOB_RECEIPTS_DISK', 's3'),
+        'prefix' => env('PAYMOB_RECEIPTS_PREFIX', 'paymob/receipts'),
+    ],
     'hmac_secret' => env('PAYMOB_HMAC', ''),
+
+    'logging' => [
+        'enabled' => env('PAYMOB_LOGGING_ENABLED', true),
+        'channel' => env('PAYMOB_LOG_CHANNEL'),
+        'include_payloads' => env('PAYMOB_LOG_PAYLOADS', false),
+        'correlation_header' => env('PAYMOB_CORRELATION_HEADER', 'X-Correlation-ID'),
+    ],
 
     'token_cache' => [
         'store' => env('PAYMOB_TOKEN_CACHE_STORE'),
@@ -29,7 +39,7 @@ return [
         'lock_wait_seconds' => env('PAYMOB_TOKEN_CACHE_LOCK_WAIT_SECONDS', 5),
     ],
 
-    "retry_limit" => 5,
+    'retry_limit' => 5,
     'retry_base_delay_ms' => 500,
     'retry_max_delay_ms' => 10000,
     'retry_jitter_ms' => 250,

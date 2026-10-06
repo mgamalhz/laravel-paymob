@@ -4,18 +4,19 @@ namespace Paymob\Laravel\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Database\QueryException;
 use Paymob\Laravel\Contracts\PaymobCapturable;
 use Paymob\Laravel\Contracts\PaymobClientContract;
 use Paymob\Laravel\DTO\CapturePaymentResponseDto;
 use Paymob\Laravel\Models\Payment;
+use Paymob\Laravel\Support\PaymobLogEvents;
+use Paymob\Laravel\Support\PaymobLogger;
 use Throwable;
 
 class ProcessPaymobPayment implements ShouldQueue
@@ -38,8 +39,7 @@ class ProcessPaymobPayment implements ShouldQueue
         public PaymobCapturable $order,
         public int $transactionId,
         public int $amountCents,
-    ) {
-    }
+    ) {}
 
     /**
      * @return list<WithoutOverlapping>
@@ -85,7 +85,8 @@ class ProcessPaymobPayment implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        Log::error('Paymob capture job failed.', [
+        PaymobLogger::error(PaymobLogEvents::FAILURE, [
+            'operation' => 'capture_job',
             'order_id' => $this->orderId(),
             'transaction_id' => $this->mask((string) $this->transactionId),
             'amount_cents' => $this->amountCents,
@@ -145,6 +146,8 @@ class ProcessPaymobPayment implements ShouldQueue
             'response_payload' => $response->payload,
             'captured_at' => now(),
         ])->save();
+
+        StorePaymobReceipt::dispatch($payment->id);
     }
 
     private function paymentReference(): string
@@ -159,12 +162,12 @@ class ProcessPaymobPayment implements ShouldQueue
 
     private function overlapKey(): string
     {
-        return 'paymob-payment:' . $this->orderId();
+        return 'paymob-payment:'.$this->orderId();
     }
 
     private function captureCompletedKey(): string
     {
-        return 'paymob-payment-captured:' . $this->orderId();
+        return 'paymob-payment-captured:'.$this->orderId();
     }
 
     private function mask(string $value): string
@@ -173,7 +176,7 @@ class ProcessPaymobPayment implements ShouldQueue
             return str_repeat('*', strlen($value));
         }
 
-        return str_repeat('*', max(strlen($value) - 4, 0)) . substr($value, -4);
+        return str_repeat('*', max(strlen($value) - 4, 0)).substr($value, -4);
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

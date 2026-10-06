@@ -4,5 +4,5 @@ namespace Paymob\Laravel\Contracts;
 
 interface ObjectEntriesTransformerInterface
 {
-    public function toArray():array;
+    public function toArray(): array;
 }

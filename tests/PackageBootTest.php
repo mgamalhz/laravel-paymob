@@ -3,9 +3,7 @@
 namespace Paymob\Laravel\Tests;
 
 use Paymob\Laravel\Contracts\PaymobClientContract;
-use Paymob\Laravel\DTO\PaymentKeyResponseDto;
 use Paymob\Laravel\PaymobClient;
-use ReflectionMethod;
 
 class PackageBootTest extends TestCase
 {
@@ -37,7 +35,7 @@ class PackageBootTest extends TestCase
     {
         $client = $this->app->make(PaymobClient::class);
 
-        $this->assertSame('', $client->baseUrl());
+        $this->assertSame('https://accept.paymob.com', $client->baseUrl());
         $this->assertSame(0, $client->iframeId());
         $this->assertSame(30, $client->timeout());
         $this->assertSame(10, $client->connectTimeout());
