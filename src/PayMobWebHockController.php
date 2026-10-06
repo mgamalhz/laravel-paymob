@@ -2,9 +2,13 @@
 
 namespace Paymob\Laravel;
 
+use DateTimeImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Paymob\Laravel\Contracts\PaymobCapturable;
+use Paymob\Laravel\DTO\PaymobWebhookPayload;
+use Paymob\Laravel\Events\PaymobWebhookReceived;
 use Paymob\Laravel\Jobs\ProcessPaymobPayment;
 use Paymob\Laravel\Models\Payment;
 use Paymob\Laravel\Support\PaymobLogEvents;
@@ -12,7 +16,12 @@ use Paymob\Laravel\Support\PaymobLogger;
 
 class PayMobWebHockController extends Controller
 {
-    public function run(Request $request)
+    public function __invoke(Request $request): JsonResponse
+    {
+        return $this->run($request);
+    }
+
+    public function run(Request $request): JsonResponse
     {
         $payload = $request->validate([
             'hmac' => ['required', 'string'],
@@ -39,6 +48,8 @@ class PayMobWebHockController extends Controller
             return response()->json(['message' => 'Webhook already processed.']);
         }
 
+        event(new PaymobWebhookReceived($this->webhookPayload($payload)));
+
         if ((bool) data_get($payload, 'obj.success') === true) {
             $payment = Payment::query()
                 ->where('paymob_reference', (string) data_get($payload, 'obj.order.id'))
@@ -61,6 +72,17 @@ class PayMobWebHockController extends Controller
         PaymobLogger::info(PaymobLogEvents::WEBHOOK_ACCEPTED, $this->logContext($request, $payload));
 
         return response()->json(['message' => 'Webhook received.']);
+    }
+
+    private function webhookPayload(array $payload): PaymobWebhookPayload
+    {
+        return new PaymobWebhookPayload(
+            transactionId: (string) data_get($payload, 'obj.id'),
+            orderId: (string) data_get($payload, 'obj.order.id'),
+            amountCents: (int) data_get($payload, 'obj.amount_cents'),
+            status: (bool) data_get($payload, 'obj.success') ? 'paid' : 'failed',
+            verifiedAt: new DateTimeImmutable,
+        );
     }
 
     private function logContext(Request $request, array $payload): array
