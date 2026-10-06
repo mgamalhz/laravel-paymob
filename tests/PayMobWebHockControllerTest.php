@@ -2,10 +2,8 @@
 
 namespace Paymob\Laravel\Tests;
 
-use DateTimeImmutable;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
-use Paymob\Laravel\DTO\PaymobWebhookPayload;
 use Paymob\Laravel\Events\PaymobWebhookReceived;
 use Paymob\Laravel\PayMobWebHockController;
 
@@ -17,6 +15,7 @@ class PayMobWebHockControllerTest extends TestCase
     {
         parent::setUp();
 
+        $this->artisan('migrate')->run();
         Route::post('/paymob/webhook', PayMobWebHockController::class);
         $this->app['config']->set('paymob.hmac_secret', self::HMAC_SECRET);
     }
@@ -30,12 +29,10 @@ class PayMobWebHockControllerTest extends TestCase
         $response->assertOk();
 
         Event::assertDispatched(PaymobWebhookReceived::class, function (PaymobWebhookReceived $event): bool {
-            return $event->payload instanceof PaymobWebhookPayload
-                && $event->payload->transactionId === '987654321'
+            return $event->payload->transactionId === '987654321'
                 && $event->payload->orderId === '111222333'
                 && $event->payload->amountCents === 10000
-                && $event->payload->status === 'paid'
-                && $event->payload->verifiedAt instanceof DateTimeImmutable;
+                && $event->payload->status === 'paid';
         });
 
         Event::assertDispatchedTimes(PaymobWebhookReceived::class, 1);
@@ -66,26 +63,26 @@ class PayMobWebHockControllerTest extends TestCase
     private function hmacFor(array $object): string
     {
         $concatenated = ''
-            . $object['amount_cents']
-            . $object['created_at']
-            . $object['currency']
-            . $this->bool($object['error_occured'])
-            . $this->bool($object['has_parent_transaction'])
-            . $object['id']
-            . $object['integration_id']
-            . $this->bool($object['is_3d_secure'])
-            . $this->bool($object['is_auth'])
-            . $this->bool($object['is_capture'])
-            . $this->bool($object['is_refunded'])
-            . $this->bool($object['is_standalone_payment'])
-            . $this->bool($object['is_voided'])
-            . $object['order']['id']
-            . $object['owner']
-            . $this->bool($object['pending'])
-            . $object['source_data']['pan']
-            . $object['source_data']['sub_type']
-            . $object['source_data']['type']
-            . $this->bool($object['success']);
+            .$object['amount_cents']
+            .$object['created_at']
+            .$object['currency']
+            .$this->bool($object['error_occured'])
+            .$this->bool($object['has_parent_transaction'])
+            .$object['id']
+            .$object['integration_id']
+            .$this->bool($object['is_3d_secure'])
+            .$this->bool($object['is_auth'])
+            .$this->bool($object['is_capture'])
+            .$this->bool($object['is_refunded'])
+            .$this->bool($object['is_standalone_payment'])
+            .$this->bool($object['is_voided'])
+            .$object['order']['id']
+            .$object['owner']
+            .$this->bool($object['pending'])
+            .$object['source_data']['pan']
+            .$object['source_data']['sub_type']
+            .$object['source_data']['type']
+            .$this->bool($object['success']);
 
         return hash_hmac('sha512', $concatenated, self::HMAC_SECRET);
     }

@@ -8,6 +8,5 @@ final class PaymobWebhookReceived
 {
     public function __construct(
         public readonly PaymobWebhookPayload $payload,
-    ) {
-    }
+    ) {}
 }

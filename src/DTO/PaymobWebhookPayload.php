@@ -4,14 +4,13 @@ namespace Paymob\Laravel\DTO;
 
 use DateTimeImmutable;
 
-final readonly class PaymobWebhookPayload
+final class PaymobWebhookPayload
 {
     public function __construct(
-        public string $transactionId,
-        public string $orderId,
-        public int $amountCents,
-        public string $status,
-        public DateTimeImmutable $verifiedAt,
-    ) {
-    }
+        public readonly string $transactionId,
+        public readonly string $orderId,
+        public readonly int $amountCents,
+        public readonly string $status,
+        public readonly DateTimeImmutable $verifiedAt,
+    ) {}
 }
