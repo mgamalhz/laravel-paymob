@@ -34,6 +34,7 @@ class PayMobWebHockController extends Controller
             'obj.amount_cents' => ['required', 'integer', 'min:1'],
             'obj.order.id' => ['required', 'integer'],
             'obj.success' => ['required', 'boolean'],
+            'obj.is_auth' => ['required', 'boolean'],
             'obj.pending' => ['required', 'boolean'],
             'obj.is_refunded' => ['required', 'boolean'],
             'obj.is_voided' => ['required', 'boolean'],
@@ -52,7 +53,7 @@ class PayMobWebHockController extends Controller
             if ($payment->status !== 'processing') {
                 return false;
             }
-            foreach (['pending', 'is_refunded', 'is_voided', 'error_occured'] as $flag) {
+            foreach (['pending', 'is_refunded', 'is_voided', 'error_occured', 'is_auth'] as $flag) {
                 if (data_get($payload, 'obj.'.$flag) === true) {
                     return false;
                 }

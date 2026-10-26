@@ -119,6 +119,36 @@ class PaymobWebhookTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_query_signature_is_supported_and_query_fields_cannot_override_json(): void
+    {
+        $payload = $this->signedPayload($this->payloadObject());
+        $signature = $payload['hmac'];
+        unset($payload['hmac']);
+        $this->postJson('/?hmac='.$signature.'&obj[success]=0', $payload)->assertOk();
+        $this->assertSame('paid', Payment::firstOrFail()->status);
+    }
+
+    public function test_pending_or_authorized_callbacks_cannot_mark_paid(): void
+    {
+        foreach (['pending', 'is_auth', 'is_refunded', 'is_voided', 'error_occured'] as $flag) {
+            $object = $this->payloadObject();
+            $object[$flag] = true;
+            $this->postJson('/', $this->signedPayload($object))->assertOk();
+            $this->assertSame('processing', Payment::firstOrFail()->status);
+            $this->assertSame(0, PaymobWebhookEvent::count());
+        }
+    }
+
+    public function test_unknown_payment_does_not_emit_event(): void
+    {
+        Event::fake();
+        $payload = $this->signedPayload($this->payloadObject());
+        Payment::query()->delete();
+        $this->postJson('/', $payload)->assertNotFound();
+        Event::assertNotDispatched(PaymobWebhookReceived::class);
+        $this->assertSame(0, PaymobWebhookEvent::count());
+    }
+
     private function signedPayload(array $object): array
     {
         return [
