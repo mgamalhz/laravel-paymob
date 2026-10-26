@@ -2,6 +2,10 @@
 
 namespace Paymob\Laravel\Tests;
 
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
+use Paymob\Laravel\Events\PaymobWebhookReceived;
+use Paymob\Laravel\Models\Payment;
 use Paymob\Laravel\Models\PaymobWebhookEvent;
 
 class PaymobWebhookTest extends TestCase
@@ -54,8 +58,7 @@ class PaymobWebhookTest extends TestCase
     public function test_webhook_rejects_missing_hmac(): void
     {
         $this->postJson('/', ['obj' => $this->payloadObject()])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('hmac');
+            ->assertForbidden();
     }
 
     public function test_webhook_rejects_invalid_hmac(): void
@@ -64,6 +67,56 @@ class PaymobWebhookTest extends TestCase
         $payload['hmac'] = str_repeat('0', 128);
 
         $this->postJson('/', $payload)->assertForbidden();
+    }
+
+    public function test_modified_callback_has_no_side_effects(): void
+    {
+        Event::fake();
+        Queue::fake();
+        $payload = $this->signedPayload($this->payloadObject());
+        $payload['obj']['amount_cents']++;
+        $this->postJson('/', $payload)->assertForbidden();
+        $this->assertSame(0, PaymobWebhookEvent::count());
+        Event::assertNotDispatched(PaymobWebhookReceived::class);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_replay_emits_once_and_stores_no_raw_payload(): void
+    {
+        Event::fake();
+        $payload = $this->signedPayload($this->payloadObject());
+        $payload['obj']['billing_data'] = ['email' => 'private@example.test'];
+        $this->postJson('/', $payload)->assertOk();
+        $this->postJson('/', $payload)->assertOk();
+        Event::assertDispatchedTimes(PaymobWebhookReceived::class, 1);
+        $this->assertStringNotContainsString('private', PaymobWebhookEvent::firstOrFail()->toJson());
+    }
+
+    public function test_terminal_payment_and_amount_mismatch_cannot_change_state(): void
+    {
+        $payment = Payment::create([
+            'paymob_reference' => '111222333', 'amount_cents' => 500, 'status' => 'processing',
+        ]);
+        $payload = $this->signedPayload($this->payloadObject());
+        $this->postJson('/', $payload)->assertStatus(409);
+        $this->assertSame(0, PaymobWebhookEvent::count());
+        $payment->update(['status' => 'captured', 'amount_cents' => 10000]);
+        $this->postJson('/', $payload)->assertOk();
+        $this->assertSame('captured', $payment->fresh()->status);
+        $this->assertSame(0, PaymobWebhookEvent::count());
+    }
+
+    public function test_matching_processing_payment_transitions_once_without_capture(): void
+    {
+        Queue::fake();
+        $payment = Payment::create([
+            'paymob_reference' => '111222333', 'amount_cents' => 10000, 'status' => 'processing',
+        ]);
+        $payload = $this->signedPayload($this->payloadObject());
+        $this->postJson('/', $payload)->assertOk();
+        $this->postJson('/', $payload)->assertOk();
+        $this->assertSame('paid', $payment->fresh()->status);
+        Queue::assertNothingPushed();
     }
 
     private function signedPayload(array $object): array
@@ -104,6 +157,11 @@ class PaymobWebhookTest extends TestCase
 
     private function payloadObject(): array
     {
+        Payment::firstOrCreate(
+            ['paymob_reference' => '111222333'],
+            ['amount_cents' => 10000, 'status' => 'processing'],
+        );
+
         return [
             'amount_cents' => 10000,
             'created_at' => '2026-08-08T20:30:00.000000',
