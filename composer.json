@@ -37,7 +37,7 @@
                 "Paymob\\Laravel\\PaymobServiceProvider"
             ],
             "aliases": {
-                "Paymob": "Paymob\\Laravel\\Facades\\Paymob"
+                "Paymob": "Paymob\\Laravel\\Facade\\Paymob"
             }
         }
     },
