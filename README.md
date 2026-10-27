@@ -20,7 +20,7 @@ application (replace the absolute path with your checkout):
 
 ```sh
 composer config repositories.paymob path D:/laravel-paymob
-composer require paymob/laravel:dev-codex/package-readme -W
+composer require paymob/laravel:dev-package-readme -W
 ```
 
 After an approved registry release is actually available, the normal command is:
@@ -154,7 +154,7 @@ controller expects `hmac` and `obj` in request input, returns 422 for missing hm
 and 403 for invalid signatures, and stores one receipt per transaction ID. Sequential
 replays return 200 without re-emitting `PaymobWebhookReceived`. It does not support
 multiple lifecycle notifications for the same transaction. The independent
-`codex/webhook-security` branch hardens query-signature handling, concurrent delivery,
+`webhook-security` branch hardens query-signature handling, concurrent delivery,
 state validation and payload retention; merge and review that branch before release.
 
 Listen for `Paymob\Laravel\Events\PaymobWebhookReceived`; the typed payload exposes
@@ -227,4 +227,3 @@ matrix in `.github/workflows/tests.yml` and style/static analysis in quality.yml
 Use only fake credentials and `Http::fake()` / `Http::preventStrayRequests()` in tests.
 Do not contact a live payment environment. See `docs/readme-verification.md` for the
 actual local verification and its limits. Run supported-version CI before release.
-
