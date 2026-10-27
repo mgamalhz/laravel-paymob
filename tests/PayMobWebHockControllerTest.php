@@ -5,6 +5,7 @@ namespace Paymob\Laravel\Tests;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Paymob\Laravel\Events\PaymobWebhookReceived;
+use Paymob\Laravel\Models\Payment;
 use Paymob\Laravel\PayMobWebHockController;
 
 class PayMobWebHockControllerTest extends TestCase
@@ -89,6 +90,11 @@ class PayMobWebHockControllerTest extends TestCase
 
     private function payloadObject(): array
     {
+        Payment::firstOrCreate(
+            ['paymob_reference' => '111222333'],
+            ['amount_cents' => 10000, 'status' => 'processing'],
+        );
+
         return [
             'amount_cents' => 10000,
             'created_at' => '2026-08-08T20:30:00.000000',
