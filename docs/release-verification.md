@@ -35,7 +35,7 @@ baseline features to avoid claiming fixes in an artifact that does not contain t
 
 ## Remaining gates before a new release
 
-1. Review and integrate codex/webhook-security and codex/package-readme. Keep the
+1. Review and integrate webhook-security and package-readme. Keep the
    README's callback behavior synchronized with the final integrated controller.
 2. Address inherited style failures and verify installation with clean dependencies.
 3. Review the capture job's uncertain remote-result retry behavior and configure
