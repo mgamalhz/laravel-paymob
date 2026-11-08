@@ -77,6 +77,12 @@ class PaymobClient implements PaymobClientContract
             return false;
         }
 
+        foreach (self::HMAC_FIELDS as $field) {
+            if (! is_scalar(data_get($input, 'obj.'.$field, data_get($input, $field)))) {
+                return false;
+            }
+        }
+
         $expectedHmac = hash_hmac('sha512', self::buildHmacString($input), $hmacSecret);
 
         return hash_equals($expectedHmac, $incomingHmac);
@@ -86,16 +92,14 @@ class PaymobClient implements PaymobClientContract
     {
         $transactionId = (int) data_get($payload, 'obj.id');
 
-        if (PaymobWebhookEvent::query()->where('transaction_id', $transactionId)->exists()) {
-            return false;
-        }
-
-        PaymobWebhookEvent::query()->create([
-            'transaction_id' => $transactionId,
-            'payload' => $originalPayload ?? $payload,
-        ]);
-
-        return true;
+        return PaymobWebhookEvent::query()->createOrFirst(
+            ['transaction_id' => $transactionId],
+            ['payload' => [
+                'order_id' => (string) data_get($payload, 'obj.order.id'),
+                'amount_cents' => (int) data_get($payload, 'obj.amount_cents'),
+                'success' => (bool) data_get($payload, 'obj.success'),
+            ]],
+        )->wasRecentlyCreated;
     }
 
     private static function buildHmacString(array $input): string

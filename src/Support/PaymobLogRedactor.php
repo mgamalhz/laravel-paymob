@@ -10,6 +10,9 @@ final class PaymobLogRedactor
      * @var list<string>
      */
     private const SENSITIVE_KEYS = [
+        'payload',
+        'billing_data',
+        'message',
         'api_key',
         'auth_token',
         'authorization',

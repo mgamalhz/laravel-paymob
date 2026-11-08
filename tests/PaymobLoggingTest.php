@@ -11,6 +11,7 @@ use Paymob\Laravel\DTO\BillingDataDto;
 use Paymob\Laravel\DTO\OrderItemDto;
 use Paymob\Laravel\DTO\RegisterOrderData;
 use Paymob\Laravel\DTO\RequestPaymentKeyData;
+use Paymob\Laravel\Models\Payment;
 use Paymob\Laravel\PaymobClient;
 use Paymob\Laravel\Support\PaymobLogEvents;
 
@@ -87,7 +88,7 @@ class PaymobLoggingTest extends TestCase
         $this->assertStringNotContainsString('sensitive.customer@example.com', $logs);
         $this->assertStringNotContainsString('201000000000', $logs);
         $this->assertStringNotContainsString('Sensitive Street', $logs);
-        $this->assertStringContainsString('[redacted]', $logs);
+        $this->assertStringNotContainsString('webhook_payload', $logs);
     }
 
     public function test_outbound_logs_do_not_include_payloads_by_default(): void
@@ -161,7 +162,7 @@ class PaymobLoggingTest extends TestCase
         $this->assertStringContainsString('webhook-corr-123', $logs);
         $this->assertStringNotContainsString($payload['hmac'], $logs);
         $this->assertStringNotContainsString('4111111111111111', $logs);
-        $this->assertStringContainsString('[redacted]', $logs);
+        $this->assertStringNotContainsString('webhook_payload', $logs);
     }
 
     private function logs(): string
@@ -209,6 +210,11 @@ class PaymobLoggingTest extends TestCase
 
     private function payloadObject(): array
     {
+        Payment::firstOrCreate(
+            ['paymob_reference' => '111222333'],
+            ['amount_cents' => 10000, 'status' => 'processing'],
+        );
+
         return [
             'amount_cents' => 10000,
             'created_at' => '2026-08-08T20:30:00.000000',

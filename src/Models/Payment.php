@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
+ * @property int $amount_cents
+ * @property string $status
  * @property int $transaction_id
  * @property string|null $order_type
  * @property string|null $order_id
